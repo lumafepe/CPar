@@ -28,6 +28,7 @@
 #include<math.h>
 #include<string.h>
 #include "MD.h"
+#include <immintrin.h>
 
 
 // Number of particles
@@ -399,7 +400,7 @@ double Kinetic() { //Write Function here!
         for (int j=0; j<3; j++) {
             v2 += v[j][i]*v[j][i];
         }
-        kin += 0.5 * m * v2;
+        kin += 0.5 * m *v2;
         
     }
     
@@ -432,75 +433,70 @@ double potentialEnergy(double rSqd){
 }
 
 double computeAccelerationsAndPotential() {
-    int i, j, k;
-    double f, rSqd, Pot = 0.0;
-    double rij[3]; // position of i relative to j
-    
+    double ai[3],ri[3],rij[3],f,rSqd,potential;
+    potential = 0.0;
     setAccelarationToZero();
-    
-    for (i = 0; i < N-1; i++) {   // loop over all distinct pairs i,j
-        for (j = i+1; j < N; j++) {
-            // initialize r^2 to zero
-            rSqd = 0;
-    
-            for (k = 0; k < 3; k++) {
-                //  component-by-component position of i relative to j
-                rij[k] = r[k][i] - r[k][j];
-                //  sum of squares of the components
-                rSqd += rij[k] * rij[k];
-            }
-            
-            //  From derivative of Lennard-Jones with sigma and epsilon set equal to 1 in natural units!
-            f = lennardJonesForce(rSqd);
-            
-            // accumulate acceleration from force on i due to j and vice versa
-            for (k = 0; k < 3; k++) {
-                //  from F = ma, where m = 1 in natural units!
-                double c = rij[k] * f;
-                a[i][k] += c;
-                a[j][k] -= c;
-            }
-            
-            // Calculate potential energy contribution for this pair
-            Pot += 2 * potentialEnergy(rSqd);
+
+    for (int i = 0; i < N - 1; i++)
+    {
+        for(int k=0;k<3;k++){
+            ri[k] = r[k][i];
+            ai[k] = 0.0;
         }
+        for (int j = i + 1; j < N; j++){
+
+            for(int k=0;k<3;k++)
+                rij[k] = ri[k] - r[k][j];
+            
+            rSqd = rij[0] * rij[0] + rij[1] * rij[1] + rij[2] * rij[2];
+
+            f = lennardJonesForce(rSqd);
+
+            for (int k = 0; k < 3; k++)
+            {
+                rij[k] *= f;
+                ai[k] += rij[k];
+                a[j][k] -= rij[k];
+            }
+            potential+=potentialEnergy(rSqd);
+        }
+        for (int k = 0; k < 3; k++)
+            a[i][k] += ai[k];
     }
-    
-    return epsilon_times_4 * Pot;
+    return potential;
 }
 
 //   Uses the derivative of the Lennard-Jones potential to calculate
 //   the forces on each atom.  Then uses a = F/m to calculate the
 //   accelleration of each atom. 
 void computeAccelerations() {
-    int i, j, k;
-    double f, rSqd;
-    double rij[3]; // position of i relative to j
-    
-    
+    double ai[3],ri[3],rij[3],f,rSqd;
     setAccelarationToZero();
-    for (i = 0; i < N-1; i++) {   // loop over all distinct pairs i,j
-        for (j = i+1; j < N; j++) {
-            // initialize r^2 to zero
-            rSqd = 0;
-    
-            for (k = 0; k < 3; k++) {
-                //  component-by-componenent position of i relative to j
-                rij[k] = r[k][i] - r[k][j];
-                //  sum of squares of the components
-                rSqd += rij[k] * rij[k];
-            }
+
+    for (int i = 0; i < N - 1; i++)
+    {
+        for(int k=0;k<3;k++){
+            ri[k] = r[k][i];
+            ai[k] = 0.0;
+        }
+        for (int j = i + 1; j < N; j++){
             
-            //  From derivative of Lennard-Jones with sigma and epsilon set equal to 1 in natural units!
+            for(int k=0;k<3;k++)
+                rij[k] = ri[k] - r[k][j];
+            
+            rSqd = rij[0] * rij[0] + rij[1] * rij[1] + rij[2] * rij[2];
+
             f = lennardJonesForce(rSqd);
-            // accumulate acceleration from force on i due to j and vice versa
-            for (k = 0; k < 3; k++) {
-                //  from F = ma, where m = 1 in natural units!
-                double c = rij[k] * f;
-                a[i][k] += c;
-                a[j][k] -= c;
+
+            for (int k = 0; k < 3; k++)
+            {
+                rij[k] *= f;
+                ai[k] += rij[k];
+                a[j][k] -= rij[k];
             }
         }
+        for (int k = 0; k < 3; k++)
+            a[i][k] += ai[k];
     }
 }
 
