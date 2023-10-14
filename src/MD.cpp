@@ -51,13 +51,13 @@ double Tinit;  //2;
 //
 const int MAXPART=5001;
 //  Position
-double r[MAXPART][3];
+double r[MAXPART][3] __attribute__((aligned(32)));;
 //  Velocity
-double v[MAXPART][3];
+double v[MAXPART][3] __attribute__((aligned(32)));;
 //  Acceleration
-double a[MAXPART][3];
+double a[MAXPART][3] __attribute__((aligned(32)));;
 //  Force
-double F[MAXPART][3];
+double F[MAXPART][3] __attribute__((aligned(32)));;
 
 // atom type
 char atype[10];
@@ -427,9 +427,7 @@ double Potential() {
     
     Pot=0.;
     for (i=0; i<N; i++) {
-        for (j=0; j<N; j++) {
-            
-            if (j!=i) {
+        for (j=i+1; j<N; j++) {
                 r2=0.;
                 for (k=0; k<3; k++) {
                     diff = r[i][k]-r[j][k];
@@ -440,9 +438,7 @@ double Potential() {
                 double term2 = quot * quot;
                 double term1 = term2 * term2;
                 
-                Pot += (term1 - term2);
-                
-            }
+                Pot += 2*(term1 - term2);
         }
     }
     
