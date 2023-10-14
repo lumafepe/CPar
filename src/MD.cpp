@@ -36,6 +36,8 @@ int N;
 //  Lennard-Jones parameters in natural units!
 double sigma = 1.;
 double epsilon = 1.;
+double epsilon_times_4 = 4 * epsilon;
+double sigma_over_6 = sigma * sigma * sigma;
 double m = 1.;
 double kB = 1.;
 
@@ -51,13 +53,13 @@ double Tinit;  //2;
 //
 const int MAXPART=5001;
 //  Position
-double r[MAXPART][3] __attribute__((aligned(32)));;
+double r[3][MAXPART] __attribute__((aligned(32)));
 //  Velocity
-double v[MAXPART][3] __attribute__((aligned(32)));;
+double v[3][MAXPART] __attribute__((aligned(32)));
 //  Acceleration
-double a[MAXPART][3] __attribute__((aligned(32)));;
+double a[MAXPART][3] __attribute__((aligned(32)));
 //  Force
-double F[MAXPART][3] __attribute__((aligned(32)));;
+double F[MAXPART][3] __attribute__((aligned(32)));
 
 // atom type
 char atype[10];
@@ -283,7 +285,7 @@ int main()
         // This updates the positions and velocities using Newton's Laws
         // Also computes the Pressure as the sum of momentum changes from wall collisions / timestep
         // which is a Kinetic Theory of gasses concept of Pressure
-        Press = VelocityVerlet(dt, i+1, tfp);
+        Press = VelocityVerletAndPotential(dt, i+1, tfp,&PE);
         Press *= PressFac;
         
         //  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -293,7 +295,6 @@ int main()
         //  We would also like to use the IGL to try to see if we can extract the gas constant
         mvs = MeanSquaredVelocity();
         KE = Kinetic();
-        PE = Potential();
         
         // Temperature from Kinetic Theory
         Temp = m*mvs/(3*kB) * TempFac;
@@ -362,9 +363,9 @@ void initialize() {
             for (k=0; k<n; k++) {
                 if (p<N) {
                     
-                    r[p][0] = (i + 0.5)*pos;
-                    r[p][1] = (j + 0.5)*pos;
-                    r[p][2] = (k + 0.5)*pos;
+                    r[0][p] = (i + 0.5)*pos;
+                    r[1][p] = (j + 0.5)*pos;
+                    r[2][p] = (k + 0.5)*pos;
                 }
                 p++;
             }
@@ -386,9 +387,9 @@ double MeanSquaredVelocity() {
     
     for (int i=0; i<N; i++) {
         
-        vx2 = vx2 + v[i][0]*v[i][0];
-        vy2 = vy2 + v[i][1]*v[i][1];
-        vz2 = vz2 + v[i][2]*v[i][2];
+        vx2 = vx2 + v[0][i]*v[0][i];
+        vy2 = vy2 + v[1][i]*v[1][i];
+        vz2 = vz2 + v[2][i]*v[2][i];
         
     }
     return (vx2+vy2+vz2)/N;
@@ -405,7 +406,7 @@ double Kinetic() { //Write Function here!
         v2 = 0.;
         for (int j=0; j<3; j++) {
             
-            v2 += v[i][j]*v[i][j];
+            v2 += v[j][i]*v[j][i];
             
         }
         kin += m*v2/2.;
@@ -418,32 +419,6 @@ double Kinetic() { //Write Function here!
 }
 
 
-// Function to calculate the potential energy of the system
-double Potential() {
-    double quot, r2, rnorm, term1, term2, Pot,diff;
-    double epsilon_times_4 = 4 * epsilon;
-    double sigma_over_6 = sigma * sigma * sigma;
-    int i, j, k;
-    
-    Pot=0.;
-    for (i=0; i<N; i++) {
-        for (j=i+1; j<N; j++) {
-                r2=0.;
-                for (k=0; k<3; k++) {
-                    diff = r[i][k]-r[j][k];
-                    r2 += diff*diff;
-                }
-                rnorm=sqrt(r2);
-                double quot = sigma_over_6 / (r2 * rnorm);
-                double term2 = quot * quot;
-                double term1 = term2 * term2;
-                
-                Pot += 2*(term1 - term2);
-        }
-    }
-    
-    return  epsilon_times_4*Pot;
-}
 
 void setAccelarationToZero() {
     int i, k;
@@ -454,14 +429,56 @@ void setAccelarationToZero() {
         }
     }
 }
-double LennardJonesForce(double rSqd) {
+double lennardJonesForce(double rSqd) {
     double InvrSqd = 1./rSqd;
     double InvrSqd4 = InvrSqd*InvrSqd*InvrSqd*InvrSqd;
     double InvrSqd7 = InvrSqd4*InvrSqd*InvrSqd*InvrSqd;
     return 24 * (2 * InvrSqd7 - InvrSqd4);
 }
+double potentialEnergy(double rSqd){
+    double quot = sigma_over_6 / (rSqd * sqrt(rSqd));
+    double term2 = quot * quot;
+    double term1 = term2 * term2;
+    return term1 - term2;
+}
 
-
+double computeAccelerationsAndPotential() {
+    int i, j, k;
+    double f, rSqd, Pot = 0.0;
+    double rij[3]; // position of i relative to j
+    
+    setAccelarationToZero();
+    
+    for (i = 0; i < N-1; i++) {   // loop over all distinct pairs i,j
+        for (j = i+1; j < N; j++) {
+            // initialize r^2 to zero
+            rSqd = 0;
+    
+            for (k = 0; k < 3; k++) {
+                //  component-by-component position of i relative to j
+                rij[k] = r[k][i] - r[k][j];
+                //  sum of squares of the components
+                rSqd += rij[k] * rij[k];
+            }
+            
+            //  From derivative of Lennard-Jones with sigma and epsilon set equal to 1 in natural units!
+            f = lennardJonesForce(rSqd);
+            
+            // accumulate acceleration from force on i due to j and vice versa
+            for (k = 0; k < 3; k++) {
+                //  from F = ma, where m = 1 in natural units!
+                double c = rij[k] * f;
+                a[i][k] += c;
+                a[j][k] -= c;
+            }
+            
+            // Calculate potential energy contribution for this pair
+            Pot += 2 * potentialEnergy(rSqd);
+        }
+    }
+    
+    return epsilon_times_4 * Pot;
+}
 
 //   Uses the derivative of the Lennard-Jones potential to calculate
 //   the forces on each atom.  Then uses a = F/m to calculate the
@@ -480,13 +497,13 @@ void computeAccelerations() {
     
             for (k = 0; k < 3; k++) {
                 //  component-by-componenent position of i relative to j
-                rij[k] = r[i][k] - r[j][k];
+                rij[k] = r[k][i] - r[k][j];
                 //  sum of squares of the components
                 rSqd += rij[k] * rij[k];
             }
             
             //  From derivative of Lennard-Jones with sigma and epsilon set equal to 1 in natural units!
-            f = LennardJonesForce(rSqd);
+            f = lennardJonesForce(rSqd);
             // accumulate acceleration from force on i due to j and vice versa
             for (k = 0; k < 3; k++) {
                 //  from F = ma, where m = 1 in natural units!
@@ -498,8 +515,9 @@ void computeAccelerations() {
     }
 }
 
+
 // returns sum of dv/dt*m/A (aka Pressure) from elastic collisions with walls
-double VelocityVerlet(double dt, int iter, FILE *fp) {
+double VelocityVerletAndPotential(double dt, int iter, FILE *fp, double *potentialEnergy) {
     int i, j, k;
     
     double psum = 0.;
@@ -510,30 +528,30 @@ double VelocityVerlet(double dt, int iter, FILE *fp) {
     //  Update positions and velocity with current velocity and acceleration
     for (i=0; i<N; i++) {
         for (j=0; j<3; j++) {
-            r[i][j] += v[i][j]*dt + 0.5*a[i][j]*dt*dt;
+            r[j][i] += v[j][i]*dt + 0.5*a[i][j]*dt*dt;
             
-            v[i][j] += 0.5*a[i][j]*dt;
+            v[j][i] += 0.5*a[i][j]*dt;
         }
     }
     //  Update accellerations from updated positions
-    computeAccelerations();
+    *potentialEnergy=computeAccelerationsAndPotential();
     //  Update velocity with updated acceleration
     for (i=0; i<N; i++) {
         for (j=0; j<3; j++) {
-            v[i][j] += 0.5*a[i][j]*dt;
+            v[j][i] += 0.5*a[i][j]*dt;
         }
     }
     
     // Elastic walls
     for (i=0; i<N; i++) {
         for (j=0; j<3; j++) {
-            if (r[i][j]<0.) {
-                v[i][j] *=-1.; //- elastic walls
-                psum += 2*m*fabs(v[i][j])/dt;  // contribution to pressure from "left" walls
+            if (r[j][i]<0.) {
+                v[j][i] *=-1.; //- elastic walls
+                psum += 2*m*fabs(v[j][i])/dt;  // contribution to pressure from "left" walls
             }
-            if (r[i][j]>=L) {
-                v[i][j]*=-1.;  //- elastic walls
-                psum += 2*m*fabs(v[i][j])/dt;  // contribution to pressure from "right" walls
+            if (r[j][i]>=L) {
+                v[j][i]*=-1.;  //- elastic walls
+                psum += 2*m*fabs(v[j][i])/dt;  // contribution to pressure from "right" walls
             }
         }
     }
@@ -550,7 +568,7 @@ void initializeVelocities() {
         
         for (j=0; j<3; j++) {
             //  Pull a number from a Gaussian Distribution
-            v[i][j] = gaussdist();
+            v[j][i] = gaussdist();
             
         }
     }
@@ -562,7 +580,7 @@ void initializeVelocities() {
     for (i=0; i<N; i++) {
         for (j=0; j<3; j++) {
             
-            vCM[j] += m*v[i][j];
+            vCM[j] += m*v[j][i];
             
         }
     }
@@ -577,7 +595,7 @@ void initializeVelocities() {
     for (i=0; i<N; i++) {
         for (j=0; j<3; j++) {
             
-            v[i][j] -= vCM[j];
+            v[j][i] -= vCM[j];
             
         }
     }
@@ -589,7 +607,7 @@ void initializeVelocities() {
     for (i=0; i<N; i++) {
         for (j=0; j<3; j++) {
             
-            vSqdSum += v[i][j]*v[i][j];
+            vSqdSum += v[j][i]*v[j][i];
             
         }
     }
@@ -599,7 +617,7 @@ void initializeVelocities() {
     for (i=0; i<N; i++) {
         for (j=0; j<3; j++) {
             
-            v[i][j] *= lambda;
+            v[j][i] *= lambda;
             
         }
     }

@@ -8,7 +8,8 @@ void initialize();
 //  update positions and velocities using Velocity Verlet algorithm 
 //  print particle coordinates to file for rendering via VMD or other animation software
 //  return 'instantaneous pressure'
-double VelocityVerlet(double dt, int iter, FILE *fp);  
+//  sets potentialEnergy to total potential energy from particle coordinates
+double VelocityVerletAndPotential(double dt, int iter, FILE *fp,double* potentialEnergy);  
 //  Compute Force using F = -dV/dr
 //  solve F = ma for use in Velocity Verlet
 void computeAccelerations();
@@ -16,8 +17,6 @@ void computeAccelerations();
 double gaussdist();
 //  Initialize velocities according to user-supplied initial Temperature (Tinit)
 void initializeVelocities();
-//  Compute total potential energy from particle coordinates
-double Potential();
 //  Compute mean squared velocity from particle velocities
 double MeanSquaredVelocity();
 //  Compute total kinetic energy from particle mass and velocities
