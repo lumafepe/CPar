@@ -12,3 +12,19 @@ clean:
 
 run:
 	./MD.exe < inputdata.txt
+
+# Compiling for performance testing.
+
+PROF_FLAGS = -pg
+
+prof: $(SRC)/MD.cpp
+	$(CC) $(CFLAGS) $(PROF_FLAGS) $(SRC)MD.cpp -lm -o prof_md
+
+run-prof: prof
+	./prof_md < inputdata.txt
+
+graph-prof: run-prof
+	gprof prof_md > main.gprof
+	gprof2dot -o output.dot main.gprof
+	rm gmon.out
+	dot -Tpng -o output.png output.dot

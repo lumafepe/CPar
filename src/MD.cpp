@@ -27,6 +27,7 @@
 #include<stdlib.h>
 #include<math.h>
 #include<string.h>
+#include "MD.h"
 
 
 // Number of particles
@@ -60,26 +61,7 @@ double F[MAXPART][3];
 
 // atom type
 char atype[10];
-//  Function prototypes
-//  initialize positions on simple cubic lattice, also calls function to initialize velocities
-void initialize();  
-//  update positions and velocities using Velocity Verlet algorithm 
-//  print particle coordinates to file for rendering via VMD or other animation software
-//  return 'instantaneous pressure'
-double VelocityVerlet(double dt, int iter, FILE *fp);  
-//  Compute Force using F = -dV/dr
-//  solve F = ma for use in Velocity Verlet
-void computeAccelerations();
-//  Numerical Recipes function for generation gaussian distribution
-double gaussdist();
-//  Initialize velocities according to user-supplied initial Temperature (Tinit)
-void initializeVelocities();
-//  Compute total potential energy from particle coordinates
-double Potential();
-//  Compute mean squared velocity from particle velocities
-double MeanSquaredVelocity();
-//  Compute total kinetic energy from particle mass and velocities
-double Kinetic();
+
 
 int main()
 {
@@ -487,7 +469,7 @@ void computeAccelerations() {
         for (j = i+1; j < N; j++) {
             // initialize r^2 to zero
             rSqd = 0;
-            
+    
             for (k = 0; k < 3; k++) {
                 //  component-by-componenent position of i relative to j
                 rij[k] = r[i][k] - r[j][k];
@@ -501,10 +483,12 @@ void computeAccelerations() {
             double InvrSqd4 = InvrSqd*InvrSqd*InvrSqd*InvrSqd;
             double InvrSqd7 = InvrSqd4*InvrSqd*InvrSqd*InvrSqd;
             double f = 24 * (2 * InvrSqd7 - InvrSqd4);
+
             for (k = 0; k < 3; k++) {
                 //  from F = ma, where m = 1 in natural units!
-                a[i][k] += rij[k] * f;
-                a[j][k] -= rij[k] * f;
+                double c = rij[k] * f;
+                a[i][k] += c;
+                a[j][k] -= c;
             }
         }
     }
@@ -520,14 +504,12 @@ double VelocityVerlet(double dt, int iter, FILE *fp) {
     // this call was removed (commented) for predagogical reasons
     //computeAccelerations();
     //  Update positions and velocity with current velocity and acceleration
-    //printf("  Updated Positions!\n");
     for (i=0; i<N; i++) {
         for (j=0; j<3; j++) {
             r[i][j] += v[i][j]*dt + 0.5*a[i][j]*dt*dt;
             
             v[i][j] += 0.5*a[i][j]*dt;
         }
-        //printf("  %i  %6.4e   %6.4e   %6.4e\n",i,r[i][0],r[i][1],r[i][2]);
     }
     //  Update accellerations from updated positions
     computeAccelerations();
@@ -551,17 +533,6 @@ double VelocityVerlet(double dt, int iter, FILE *fp) {
             }
         }
     }
-    
-    
-    /* removed, uncomment to save atoms positions */
-    /*for (i=0; i<N; i++) {
-        fprintf(fp,"%s",atype);
-        for (j=0; j<3; j++) {
-            fprintf(fp,"  %12.10e ",r[i][j]);
-        }
-        fprintf(fp,"\n");
-    }*/
-    //fprintf(fp,"\n \n");
     
     return psum/(6*L*L);
 }

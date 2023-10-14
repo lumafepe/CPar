@@ -3,6 +3,11 @@ sshRunner.sh
 cp_average.txt
 cp_output.txt
 cp_traj.xyz
+output.dot
+output.png
+temp.txt
+prof_md
+main.gprof
 # Prerequisites
 *.d
 
