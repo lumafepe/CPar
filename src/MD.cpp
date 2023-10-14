@@ -393,21 +393,16 @@ double MeanSquaredVelocity() {
 double Kinetic() { //Write Function here!  
     
     double v2, kin;
-    
     kin =0.;
     for (int i=0; i<N; i++) {
-        
         v2 = 0.;
         for (int j=0; j<3; j++) {
-            
             v2 += v[j][i]*v[j][i];
-            
         }
-        kin += m*v2/2.;
+        kin += 0.5 * m * v2;
         
     }
     
-    //printf("  Total Kinetic Energy is %f\n",N*mvs*m/2.);
     return kin;
     
 }
