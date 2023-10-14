@@ -325,7 +325,7 @@ int main()
         Tavg += Temp;
         Pavg += Press;
         
-        fprintf(ofp,"  %.12e  %.12e  %.12e %.12e  %.12e  %.12e \n",i*dt*timefac,Temp,Press,KE, PE, KE+PE);
+        fprintf(ofp,"  %.11e  %.11e  %.11e %.11e  %.11e  %.11e \n",i*dt*timefac,Temp,Press,KE, PE, KE+PE);
         
         
     }
@@ -338,17 +338,17 @@ int main()
     gc = NA*Pavg*(Vol*VolFac)/(N*Tavg);
     fprintf(afp,"  Total Time (s)      T (K)               P (Pa)      PV/nT (J/(mol K))         Z           V (m^3)              N\n");
     fprintf(afp," --------------   -----------        ---------------   --------------   ---------------   ------------   -----------\n");
-    fprintf(afp,"  %.12e  %.12e       %.12e     %.12e       %.12e        %.12e         %i\n",i*dt*timefac,Tavg,Pavg,gc,Z,Vol*VolFac,N);
+    fprintf(afp,"  %.11e  %.11e       %.11e     %.11e       %.11e        %.11e         %i\n",i*dt*timefac,Tavg,Pavg,gc,Z,Vol*VolFac,N);
     
     printf("\n  TO ANIMATE YOUR SIMULATION, OPEN THE FILE \n  '%s' WITH VMD AFTER THE SIMULATION COMPLETES\n",tfn);
     printf("\n  TO ANALYZE INSTANTANEOUS DATA ABOUT YOUR MOLECULE, OPEN THE FILE \n  '%s' WITH YOUR FAVORITE TEXT EDITOR OR IMPORT THE DATA INTO EXCEL\n",ofn);
     printf("\n  THE FOLLOWING THERMODYNAMIC AVERAGES WILL BE COMPUTED AND WRITTEN TO THE FILE  \n  '%s':\n",afn);
-    printf("\n  AVERAGE TEMPERATURE (K):                 %.12e\n",Tavg);
-    printf("\n  AVERAGE PRESSURE  (Pa):                  %.12e\n",Pavg);
-    printf("\n  PV/nT (J * mol^-1 K^-1):                 %.12e\n",gc);
-    printf("\n  PERCENT ERROR of pV/nT AND GAS CONSTANT: %.12e\n",100*fabs(gc-8.3144598)/8.3144598);
-    printf("\n  THE COMPRESSIBILITY (unitless):          %.12e \n",Z);
-    printf("\n  TOTAL VOLUME (m^3):                      %.12e \n",Vol*VolFac);
+    printf("\n  AVERAGE TEMPERATURE (K):                 %.11e\n",Tavg);
+    printf("\n  AVERAGE PRESSURE  (Pa):                  %.11e\n",Pavg);
+    printf("\n  PV/nT (J * mol^-1 K^-1):                 %.11e\n",gc);
+    printf("\n  PERCENT ERROR of pV/nT AND GAS CONSTANT: %.11e\n",100*fabs(gc-8.3144598)/8.3144598);
+    printf("\n  THE COMPRESSIBILITY (unitless):          %.11e \n",Z);
+    printf("\n  TOTAL VOLUME (m^3):                      %.11e \n",Vol*VolFac);
     printf("\n  NUMBER OF PARTICLES (unitless):          %i \n", N);
     
     
@@ -390,22 +390,7 @@ void initialize() {
     }
     
     // Call function to initialize velocities
-    initializeVelocities();
-    
-    /***********************************************
-     *   Uncomment if you want to see what the initial positions and velocities are
-     printf("  Printing initial positions!\n");
-     for (i=0; i<N; i++) {
-     printf("  %6.3e  %6.3e  %6.3e\n",r[i][0],r[i][1],r[i][2]);
-     }
-     
-     printf("  Printing initial velocities!\n");
-     for (i=0; i<N; i++) {
-     printf("  %6.3e  %6.3e  %6.3e\n",v[i][0],v[i][1],v[i][2]);
-     }
-     */
-    
-    
+    initializeVelocities();   
     
 }   
 
@@ -416,7 +401,6 @@ double MeanSquaredVelocity() {
     double vx2 = 0;
     double vy2 = 0;
     double vz2 = 0;
-    double v2;
     
     for (int i=0; i<N; i++) {
         
@@ -425,11 +409,7 @@ double MeanSquaredVelocity() {
         vz2 = vz2 + v[i][2]*v[i][2];
         
     }
-    v2 = (vx2+vy2+vz2)/N;
-    
-    
-    //printf("  Average of x-component of velocity squared is %f\n",v2);
-    return v2;
+    return (vx2+vy2+vz2)/N;
 }
 
 //  Function to calculate the kinetic energy of the system
@@ -516,7 +496,11 @@ void computeAccelerations() {
             }
             
             //  From derivative of Lennard-Jones with sigma and epsilon set equal to 1 in natural units!
-            f = 24 * (2 * pow(rSqd, -7) - pow(rSqd, -4));
+            //double f = 24 * (2 * pow(rSqd,-7) - pow(rSqd,-4));
+            double InvrSqd = 1./rSqd;
+            double InvrSqd4 = InvrSqd*InvrSqd*InvrSqd*InvrSqd;
+            double InvrSqd7 = InvrSqd4*InvrSqd*InvrSqd*InvrSqd;
+            double f = 24 * (2 * InvrSqd7 - InvrSqd4);
             for (k = 0; k < 3; k++) {
                 //  from F = ma, where m = 1 in natural units!
                 a[i][k] += rij[k] * f;
