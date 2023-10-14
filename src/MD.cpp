@@ -445,6 +445,22 @@ double Potential() {
     return  epsilon_times_4*Pot;
 }
 
+void setAccelarationToZero() {
+    int i, k;
+    
+    for (i = 0; i < N; i++) {  // set all accelerations to zero
+        for (k = 0; k < 3; k++) {
+            a[i][k] = 0;
+        }
+    }
+}
+double LennardJonesForce(double rSqd) {
+    double InvrSqd = 1./rSqd;
+    double InvrSqd4 = InvrSqd*InvrSqd*InvrSqd*InvrSqd;
+    double InvrSqd7 = InvrSqd4*InvrSqd*InvrSqd*InvrSqd;
+    return 24 * (2 * InvrSqd7 - InvrSqd4);
+}
+
 
 
 //   Uses the derivative of the Lennard-Jones potential to calculate
@@ -456,11 +472,7 @@ void computeAccelerations() {
     double rij[3]; // position of i relative to j
     
     
-    for (i = 0; i < N; i++) {  // set all accelerations to zero
-        for (k = 0; k < 3; k++) {
-            a[i][k] = 0;
-        }
-    }
+    setAccelarationToZero();
     for (i = 0; i < N-1; i++) {   // loop over all distinct pairs i,j
         for (j = i+1; j < N; j++) {
             // initialize r^2 to zero
@@ -474,12 +486,8 @@ void computeAccelerations() {
             }
             
             //  From derivative of Lennard-Jones with sigma and epsilon set equal to 1 in natural units!
-            //double f = 24 * (2 * pow(rSqd,-7) - pow(rSqd,-4));
-            double InvrSqd = 1./rSqd;
-            double InvrSqd4 = InvrSqd*InvrSqd*InvrSqd*InvrSqd;
-            double InvrSqd7 = InvrSqd4*InvrSqd*InvrSqd*InvrSqd;
-            double f = 24 * (2 * InvrSqd7 - InvrSqd4);
-
+            f = LennardJonesForce(rSqd);
+            // accumulate acceleration from force on i due to j and vice versa
             for (k = 0; k < 3; k++) {
                 //  from F = ma, where m = 1 in natural units!
                 double c = rij[k] * f;
