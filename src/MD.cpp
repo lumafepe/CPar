@@ -380,19 +380,13 @@ void initialize() {
 
 //  Function to calculate the averaged velocity squared
 double MeanSquaredVelocity() { 
-    
-    double vx2 = 0;
-    double vy2 = 0;
-    double vz2 = 0;
-    
-    for (int i=0; i<N; i++) {
-        
-        vx2 = vx2 + v[0][i]*v[0][i];
-        vy2 = vy2 + v[1][i]*v[1][i];
-        vz2 = vz2 + v[2][i]*v[2][i];
-        
-    }
-    return (vx2+vy2+vz2)/N;
+
+    double s=0.;
+    for (int j=0;j<3;j++)
+        for (int i=0; i<N; i++)   
+            s += v[j][i]*v[j][i];
+
+    return s/N;
 }
 
 //  Function to calculate the kinetic energy of the system
