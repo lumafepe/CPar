@@ -1,6 +1,6 @@
 CC = gcc
 SRC = src/
-CFLAGS = -O3
+CFLAGS = -O3 -fopt-info-vec-optimized -march=native -ftree-vectorize -mavx
 
 .DEFAULT_GOAL = MD.exe
 
