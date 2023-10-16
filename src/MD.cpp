@@ -38,7 +38,7 @@ int N;
 double sigma = 1.;
 double epsilon = 1.;
 double epsilon_times_4 = 4 * epsilon;
-double sigma_over_6 = sigma * sigma * sigma;
+double sigma_over_6 = sigma * sigma * sigma * sigma * sigma * sigma;
 double m = 1.;
 double kB = 1.;
 
@@ -59,8 +59,6 @@ double r[3][MAXPART] __attribute__((aligned(32)));
 double v[3][MAXPART] __attribute__((aligned(32)));
 //  Acceleration
 double a[MAXPART][3] __attribute__((aligned(32)));
-//  Force
-double F[MAXPART][3] __attribute__((aligned(32)));
 
 // atom type
 char atype[10];
@@ -423,8 +421,7 @@ double lennardJonesForce(double rSqd) {
     return 24 * (2 * InvrSqd7 - InvrSqd4);
 }
 double potentialEnergy(double rSqd){
-    double quot = sigma_over_6 / (rSqd * sqrt(rSqd));
-    double term2 = quot * quot;
+    double term2 = sigma_over_6 / (rSqd * rSqd * rSqd);
     double term1 = term2 * term2;
     return term1 - term2;
 }
