@@ -10,10 +10,6 @@ MD.exe: $(SRC)/MD.cpp
 clean:
 	rm ./MD.exe
 
-fclean: 
-	rm ./MD.exe
-	rm cp_*
-
 run:
 	./MD.exe < inputdata.txt
 
@@ -32,3 +28,18 @@ graph-prof: run-prof
 	gprof2dot -o output.dot main.gprof
 	rm gmon.out
 	dot -Tpng -o output.png output.dot
+
+# Compiling for manual vectorization.
+
+VECT_FLAGS = -O3 -mavx -march=native -mtune=native
+
+magic: $(SRC)/main.cpp
+	$(CC) $(VECT_FLAGS) $(SRC)main.cpp -lm -o md_vect
+
+cast: 
+	./md_vect < inputdata.txt
+
+vanish:
+	rm cp_*
+	rm md_vect
+
