@@ -1,6 +1,6 @@
 CC = gcc
 SRC = src/
-CFLAGS = -O3 -fopt-info-vec-optimized -march=native -ftree-vectorize -mavx
+CFLAGS = -O3 -fopt-info-vec-missed -march=native -ftree-vectorize -mavx
 
 .DEFAULT_GOAL = MD.exe
 
@@ -9,6 +9,10 @@ MD.exe: $(SRC)/MD.cpp
 
 clean:
 	rm ./MD.exe
+
+fclean: 
+	rm ./MD.exe
+	rm cp_*
 
 run:
 	./MD.exe < inputdata.txt

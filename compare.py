@@ -47,8 +47,8 @@ def pprint(at: int, string: str, color: str) -> None:
             print(f"{COLOR_CODE}{char}\033[00m", end="")
         else:
             print(char, end="")
-    print("\n")
-                
+    print("")  
+               
 def print_diff(old_val: str, new_val: str, linenum: int, 
                col: int, at: int, filename: str) -> None:
     
@@ -84,7 +84,7 @@ def compare():
                     print_diff(old_val, new_val, i, j, at, new_file)   
                     diff_count += 1
                     
-        print(f"Detected \033[91m {diff_count}\033[00m diffs on file {new_file}")
+        print(f"Detected \033[91m{diff_count}\033[00m diffs on file {new_file}")
         input("...Continue [ENTER]\n")
                 
             

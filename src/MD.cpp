@@ -22,35 +22,41 @@
  300 Pompton Road
  Wayne NJ 07470
  
- */
-#include<stdio.h>
-#include<stdlib.h>
-#include<math.h>
-#include<string.h>
+*/
+
+#include <unistd.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
+#include <math.h>
+
 #include "MD.h"
+
 #include <immintrin.h>
 
 
 // Number of particles
 int N;
 
-//  Lennard-Jones parameters in natural units!
+// Lennard-Jones parameters in natural units!
 double sigma = 1.;
+double sigma_over_6 = sigma;
+
 double epsilon = 1.;
 double epsilon_times_4 = 4 * epsilon;
-double sigma_over_6 = sigma * sigma * sigma * sigma * sigma * sigma;
+
 double m = 1.;
 double kB = 1.;
 
 double NA = 6.022140857e23;
 double kBSI = 1.38064852e-23;  // m^2*kg/(s^2*K)
 
-//  Size of box, which will be specified in natural units
+// Size of box, which will be specified in natural units
 double L;
 
-//  Initial Temperature in Natural Units
+// Initial Temperature in Natural Units
 double Tinit;  //2;
-//  Vectors!
+// Vectors!
 //
 const int MAXPART=5001;
 //  Position
@@ -340,95 +346,145 @@ int main()
     return 0;
 }
 
-
+/**
+ * Initialize particle positions and velocities.
+ *
+ * This function initializes the positions of particles in a cubic lattice with spacing 'pos' and
+ * also calls the 'initializeVelocities' function to set the initial velocities.
+ *
+ * @return None, but updates the positions and velocities of particles.
+ */
 void initialize() {
-    int n, p, i, j, k;
-    double pos;
+
+    // Number of atoms in each direction.
+    int n = int(ceil(pow(N, 1.0/3)));
     
-    // Number of atoms in each direction
-    n = int(ceil(pow(N, 1.0/3)));
+    // Spacing between atoms along a given direction.
+    double pos = L / n;
     
-    //  spacing between atoms along a given direction
-    pos = L / n;
-    
-    //  index for number of particles assigned positions
-    p = 0;
-    //  initialize positions
-    for (i=0; i<n; i++) {
-        for (j=0; j<n; j++) {
-            for (k=0; k<n; k++) {
+    // Index for number of particles assigned positions.
+    int p = 0;
+
+    // Initialize positions.
+    for (int i=0; i < n; i++) {
+        for (int j=0; j < n; j++) {
+            for (int k=0; k < n; k++) {
                 if (p<N) {
-                    
-                    r[0][p] = (i + 0.5)*pos;
-                    r[1][p] = (j + 0.5)*pos;
-                    r[2][p] = (k + 0.5)*pos;
+                    r[0][p] = (i + 0.5) * pos;
+                    r[1][p] = (j + 0.5) * pos;
+                    r[2][p] = (k + 0.5) * pos;
                 }
                 p++;
             }
         }
     }
     
-    // Call function to initialize velocities
-    initializeVelocities();   
-    
+    // Call function to initialize velocities.
+    initializeVelocities();    
 }   
 
 
-//  Function to calculate the averaged velocity squared
+/**
+ * Calculate the mean squared velocity of particles in the system.
+ *
+ * This function computes the average squared velocity of particles by summing the squared velocities
+ * of all particles and dividing by the total number of particles (N).
+ *
+ * @return The mean squared velocity of particles.
+ */
 double MeanSquaredVelocity() { 
 
-    double s=0.;
-    for (int j=0;j<3;j++)
-        for (int i=0; i<N; i++)   
-            s += v[j][i]*v[j][i];
+    double s = 0.;
+    for (int j = 0; j < 3;j++)
+        for (int i = 0; i < N; i++)   
+            s += v[j][i] * v[j][i];
 
-    return s/N;
+    return s / N;
 }
 
-//  Function to calculate the kinetic energy of the system
+/**
+ * Calculate the kinetic energy of the system.
+ *
+ * This function computes the kinetic energy of the system by summing the kinetic energy of each particle.
+ *
+ * @return The total kinetic energy of the system.
+ */
 double Kinetic() { //Write Function here!  
     
-    double v2, kin;
-    kin =0.;
-    for (int i=0; i<N; i++) {
+    double v2, kin = 0.;
+
+    for (int i = 0; i < N; i++) {
         v2 = 0.;
-        for (int j=0; j<3; j++) {
-            v2 += v[j][i]*v[j][i];
-        }
+        for (int j=0; j<3; j++) v2 += v[j][i]*v[j][i];
         kin += 0.5 * m * v2;
-        
     }
     
     return kin;
-    
 }
 
 
-
+/**
+ * Set accelerations to zero for all particles.
+ *
+ * This function initializes the accelerations for all particles to zero. It is typically used
+ * at the beginning of a simulation to ensure a clean start for the computation of accelerations.
+ *
+ * @return None, but updates the accelerations in the 'a' array.
+ */
 void setAccelarationToZero() {
     int i, k;
     
-    for (i = 0; i < N; i++) {  // set all accelerations to zero
-        for (k = 0; k < 3; k++) {
-            a[i][k] = 0;
-        }
+    for (i = 0; i < N; i++) {
+        for (k = 0; k < 3; k++) a[i][k] = 0;
     }
 }
+
+/**
+ * Calculate the Lennard-Jones force between particles at a given distance.
+ *
+ * This function calculates the Lennard-Jones force between particles based on the squared distance
+ * between them. It uses the 12-6 Lennard-Jones potential to compute the force.
+ *
+ * @param rSqd The squared distance between particles.
+ *
+ * @return The Lennard-Jones force.
+ */
 double lennardJonesForce(double rSqd) {
-    double InvrSqd = 1./rSqd;
-    double InvrSqd4 = InvrSqd*InvrSqd*InvrSqd*InvrSqd;
-    double InvrSqd7 = InvrSqd4*InvrSqd*InvrSqd*InvrSqd;
+    double InvrSqd = 1. / rSqd;
+    double InvrSqd4 = InvrSqd * InvrSqd * InvrSqd * InvrSqd;
+    double InvrSqd7 = InvrSqd4 * InvrSqd * InvrSqd * InvrSqd;
     return 24 * (2 * InvrSqd7 - InvrSqd4);
 }
-double potentialEnergy(double rSqd){
+
+/**
+ * Calculate the Lennard-Jones potential energy at a given distance.
+ *
+ * This function calculates the Lennard-Jones potential energy between particles based on the squared distance
+ * between them. It uses the 12-6 Lennard-Jones potential to compute the potential energy.
+ *
+ * @param rSqd The squared distance between particles.
+ *
+ * @return The Lennard-Jones potential energy.
+ */
+double potentialEnergy(double rSqd) {
     double term2 = sigma_over_6 / (rSqd * rSqd * rSqd);
     double term1 = term2 * term2;
     return term1 - term2;
 }
 
+/**
+ * Calculate accelerations and potential energy for particles in the simulation.
+ *
+ * This function computes the accelerations of particles due to inter-particle forces
+ * using the Lennard-Jones potential and calculates the potential energy of the system.
+ *
+ * @return The total potential energy of the system, and the accelerations are updated in the 'a' array.
+ */
 double computeAccelerationsAndPotential() {
-    double ai[3],ri[3],rij[3],f,rSqd,potential;
-    potential = 0.0;
+
+    double ai[3], ri[3], rij[3],
+           f, rSqd, potential = 0.0;
+
     setAccelarationToZero();
 
     for (int i = 0; i < N - 1; i++)
@@ -438,11 +494,9 @@ double computeAccelerationsAndPotential() {
             ai[k] = 0.0;
         }
 
-        for (int j = i + 1; j < N; j++){
+        for (int j = i + 1; j < N; j++) {
 
-            for(int k = 0; k < 3; k++)
-                rij[k] = ri[k] - r[k][j];
-            
+            for (int k = 0; k < 3; k++) rij[k] = ri[k] - r[k][j];
             rSqd = (rij[0] * rij[0]) + (rij[1] * rij[1]) + (rij[2] * rij[2]);
 
             f = lennardJonesForce(rSqd);
@@ -453,33 +507,43 @@ double computeAccelerationsAndPotential() {
                 ai[k] += rij[k];
                 a[j][k] -= rij[k];
             }
+
             potential += 2 * potentialEnergy(rSqd);
         }
-        for (int k = 0; k < 3; k++)
-            a[i][k] += ai[k];
+        for (int k = 0; k < 3; k++) a[i][k] += ai[k];
     }
     return epsilon_times_4 * potential;
 }
 
 
-//   Uses the derivative of the Lennard-Jones potential to calculate
-//   the forces on each atom.  Then uses a = F/m to calculate the
-//   accelleration of each atom. 
+/**
+ * Calculate particle accelerations based on inter-particle forces using the Lennard-Jones potential.
+ *
+ * This function computes the accelerations of particles based on the derivative of the Lennard-Jones potential
+ * and uses Newton's second law (F = ma) to calculate the acceleration of each particle.
+ *
+ * @note The function assumes that necessary variables like N, r, and a are declared and initialized
+ * before calling this function. It also relies on the 'lennardJonesForce' function to compute forces.
+ *
+ * @return None, but updates the accelerations in the 'a' array.
+ */
 void computeAccelerations() {
-    double ai[3],ri[3],rij[3],f,rSqd;
+
+    double ai[3], ri[3], rij[3],
+           f, rSqd;
+    
     setAccelarationToZero();
 
     for (int i = 0; i < N - 1; i++)
     {
-        for(int k=0;k<3;k++){
+        for(int k = 0; k < 3; k++) {
             ri[k] = r[k][i];
             ai[k] = 0.0;
         }
-        for (int j = i + 1; j < N; j++){
+
+        for (int j = i + 1; j < N; j++) {
             
-            for(int k=0;k<3;k++)
-                rij[k] = ri[k] - r[k][j];
-            
+            for(int k = 0; k < 3; k++) rij[k] = ri[k] - r[k][j];
             rSqd = rij[0] * rij[0] + rij[1] * rij[1] + rij[2] * rij[2];
 
             f = lennardJonesForce(rSqd);
@@ -491,126 +555,154 @@ void computeAccelerations() {
                 a[j][k] -= rij[k];
             }
         }
-        for (int k = 0; k < 3; k++)
-            a[i][k] += ai[k];
+        for (int k = 0; k < 3; k++) a[i][k] += ai[k];
     }
 }
 
 
-// returns sum of dv/dt*m/A (aka Pressure) from elastic collisions with walls
+/**
+ * Perform a Velocity Verlet time integration step and calculate the potential energy 
+ * and pressure from elastic collisions with walls.
+ *
+ * This function performs a Velocity Verlet time integration step, updating particle positions
+ * and velocities, and computes the potential energy and pressure contributions due to elastic
+ * collisions with walls.
+ *
+ * @param dt              Time step size for the integration.
+ * @param iter            Iteration number (for tracking purposes).
+ * @param fp              Pointer to the output file for data logging (can be NULL).
+ * @param potentialEnergy Pointer to a variable to store the calculated potential energy.
+ *
+ * @return The pressure contribution from elastic collisions with walls.
+ */
 double VelocityVerletAndPotential(double dt, int iter, FILE *fp, double *potentialEnergy) {
+    
     int i, j, k;
-    
     double psum = 0.;
-    
-    //  Compute accelerations from forces at current position
-    // this call was removed (commented) for predagogical reasons
-    //computeAccelerations();
-    //  Update positions and velocity with current velocity and acceleration
-    for (i=0; i<N; i++) {
-        for (j=0; j<3; j++) {
-            r[j][i] += v[j][i]*dt + 0.5*a[i][j]*dt*dt;
-            
-            v[j][i] += 0.5*a[i][j]*dt;
+
+    /*
+    Compute accelerations from forces at current position 
+    This call was removed (commented) for predagogical reasons computeAccelerations();
+    Update positions and velocity with current velocity and acceleration.
+    */
+    for (i = 0; i < N; i++) {
+        for (j = 0; j < 3; j++) {
+            r[j][i] += v[j][i] * dt + 0.5 * a[i][j] * dt * dt;
+            v[j][i] += 0.5 * a[i][j] * dt;
         }
     }
-    //  Update accellerations from updated positions
-    *potentialEnergy=computeAccelerationsAndPotential();
-    //  Update velocity with updated acceleration
-    for (i=0; i<N; i++) {
-        for (j=0; j<3; j++) {
-            v[j][i] += 0.5*a[i][j]*dt;
-        }
+
+    // Update accellerations from updated positions.
+    *potentialEnergy = computeAccelerationsAndPotential();
+
+    // Update velocity with updated acceleration.
+    for (i = 0; i < N; i++) {
+        for (j = 0; j < 3; j++) v[j][i] += 0.5 * a[i][j] * dt;
     }
     
-    // Elastic walls
-    for (i=0; i<N; i++) {
-        for (j=0; j<3; j++) {
-            if (r[j][i]<0.) {
-                v[j][i] *=-1.; //- elastic walls
-                psum += 2*m*fabs(v[j][i])/dt;  // contribution to pressure from "left" walls
+    // Elastic walls.
+    for (i = 0; i < N; i++) {
+        for (j = 0; j < 3; j++) {
+
+            if (r[j][i] < 0.) {
+                v[j][i] *= -1.; // Elastic walls.
+                psum += 2 * m * fabs(v[j][i]) / dt;  // Contribution to pressure from "left" walls.
             }
-            if (r[j][i]>=L) {
-                v[j][i]*=-1.;  //- elastic walls
-                psum += 2*m*fabs(v[j][i])/dt;  // contribution to pressure from "right" walls
+
+            if (r[j][i] >= L) {
+                v[j][i] *= -1.;  // Elastic walls.
+                psum += 2 * m * fabs(v[j][i]) / dt;  // Contribution to pressure from "right" walls.
             }
         }
     }
     
-    return psum/(6*L*L);
+    return psum / (6 * L * L);
 }
 
 
+/**
+ * Initializes particle velocities for the simulation.
+ *
+ * This function sets the velocities of N particles in a simulation according to
+ * specific procedures, ensuring the center of mass velocity is zero and that the
+ * average velocity is scaled to match the desired initial temperature (Tinit).
+ *
+ * @note The function assumes that necessary variables like N, m, v, and Tinit
+ * are declared and initialized before calling this function.
+ *
+ * @param None
+ *
+ * @return None
+ */
 void initializeVelocities() {
     
     int i, j;
     
-    for (i=0; i<N; i++) {
-        
-        for (j=0; j<3; j++) {
-            //  Pull a number from a Gaussian Distribution
-            v[j][i] = gaussdist();
-            
-        }
+    for (i = 0; i < N; i++) {
+        for (j = 0; j < 3; j++) v[j][i] = gaussdist(); // Pull a number from a Gaussian Distribution.
     }
     
-    // Vcm = sum_i^N  m*v_i/  sum_i^N  M
-    // Compute center-of-mas velocity according to the formula above
+    /*
+    Compute center of mass velocity according to the following formula:
+    Vcm = sum_i^N m*v_i / sum_i^N M
+    */
     double vCM[3] = {0, 0, 0};
     
-    for (i=0; i<N; i++) {
-        for (j=0; j<3; j++) {
-            
-            vCM[j] += m*v[j][i];
-            
-        }
+    for (i = 0; i < N; i++) {
+        for (j = 0; j < 3; j++) vCM[j] += m * v[j][i];
     }
     
-    
-    for (i=0; i<3; i++) vCM[i] /= N*m;
-    
-    //  Subtract out the center-of-mass velocity from the
-    //  velocity of each particle... effectively set the
-    //  center of mass velocity to zero so that the system does
-    //  not drift in space!
-    for (i=0; i<N; i++) {
-        for (j=0; j<3; j++) {
-            
-            v[j][i] -= vCM[j];
-            
-        }
+    for (i = 0; i < 3; i++) vCM[i] /= N*m;
+
+    /*
+    Subtract out the center-of-mass velocity from the
+    velocity of each particle... effectively set the
+    center of mass velocity to zero so that the system does
+    not drift in space!
+    */
+    for (i = 0; i < N; i++) {
+        for (j = 0; j < 3; j++) v[j][i] -= vCM[j];
     }
     
-    //  Now we want to scale the average velocity of the system
-    //  by a factor which is consistent with our initial temperature, Tinit
-    double vSqdSum, lambda;
-    vSqdSum=0.;
-    for (i=0; i<N; i++) {
-        for (j=0; j<3; j++) {
-            
-            vSqdSum += v[j][i]*v[j][i];
-            
-        }
+    /*
+    Now we want to scale the average velocity of the system
+    by a factor which is consistent with our initial temperature, Tinit
+    */
+    double vSqdSum = 0., lambda;
+    for (i = 0; i < N; i++) {
+        for (j = 0; j < 3; j++) vSqdSum += v[j][i]*v[j][i];
     }
     
-    lambda = sqrt( 3*(N-1)*Tinit/vSqdSum);
+    lambda = sqrt(3 * (N-1) * Tinit / vSqdSum);
     
-    for (i=0; i<N; i++) {
-        for (j=0; j<3; j++) {
-            
-            v[j][i] *= lambda;
-            
-        }
+    for (i = 0; i < N; i++) {
+        for (j=0; j<3; j++) v[j][i] *= lambda;
     }
 }
 
 
-//  Numerical recipes Gaussian distribution number generator
+/**
+ * Generate a random number from a Gaussian distribution (mean=0, variance=1).
+ *
+ * This function implements the Box-Muller transform to generate random numbers
+ * from a standard Gaussian distribution. It keeps track of a previously generated
+ * value for efficiency and generates a new one every other call.
+ *
+ * @note The function uses the 'rand()' function for random number generation,
+ * so make sure to seed the random number generator before using this function.
+ *
+ * @return A random number from a Gaussian distribution with a mean of 0 and a
+ *         variance of 1.
+ */
 double gaussdist() {
+
     static bool available = false;
     static double gset;
+
     double fac, rsq, v1, v2;
+
     if (!available) {
+        
         do {
             v1 = 2.0 * rand() / double(RAND_MAX) - 1.0;
             v2 = 2.0 * rand() / double(RAND_MAX) - 1.0;
@@ -621,7 +713,7 @@ double gaussdist() {
         gset = v1 * fac;
         available = true;
         
-        return v2*fac;
+        return v2 * fac;
     } else {
         
         available = false;
