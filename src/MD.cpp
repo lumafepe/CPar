@@ -335,9 +335,6 @@ int main()
     printf("\n  TOTAL VOLUME (m^3):                      %.11e \n",Vol*VolFac);
     printf("\n  NUMBER OF PARTICLES (unitless):          %i \n", N);
     
-    
-    
-    
     fclose(tfp);
     fclose(ofp);
     fclose(afp);
@@ -400,7 +397,7 @@ double Kinetic() { //Write Function here!
         for (int j=0; j<3; j++) {
             v2 += v[j][i]*v[j][i];
         }
-        kin += 0.5 * m *v2;
+        kin += 0.5 * m * v2;
         
     }
     
@@ -439,16 +436,17 @@ double computeAccelerationsAndPotential() {
 
     for (int i = 0; i < N - 1; i++)
     {
-        for(int k=0;k<3;k++){
+        for(int k = 0; k < 3; k++) {
             ri[k] = r[k][i];
             ai[k] = 0.0;
         }
+
         for (int j = i + 1; j < N; j++){
 
-            for(int k=0;k<3;k++)
+            for(int k = 0; k < 3; k++)
                 rij[k] = ri[k] - r[k][j];
             
-            rSqd = rij[0] * rij[0] + rij[1] * rij[1] + rij[2] * rij[2];
+            rSqd = (rij[0] * rij[0]) + (rij[1] * rij[1]) + (rij[2] * rij[2]);
 
             f = lennardJonesForce(rSqd);
 
@@ -458,13 +456,14 @@ double computeAccelerationsAndPotential() {
                 ai[k] += rij[k];
                 a[j][k] -= rij[k];
             }
-            potential+=potentialEnergy(rSqd);
+            potential += 2 * potentialEnergy(rSqd);
         }
         for (int k = 0; k < 3; k++)
             a[i][k] += ai[k];
     }
-    return potential;
+    return epsilon_times_4 * potential;
 }
+
 
 //   Uses the derivative of the Lennard-Jones potential to calculate
 //   the forces on each atom.  Then uses a = F/m to calculate the

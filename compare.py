@@ -11,6 +11,7 @@ ORIGINAL_FILENAMES: list[str] = [f"output/{name}" for name in FILENAMES]
 
 MATCH: list[tuple[str, str]] = zip(FILENAMES, ORIGINAL_FILENAMES)
 
+ 
 def is_fp(value_str: str) -> bool:
     
     try: 
@@ -37,13 +38,27 @@ def at_most_equal(a: str, b: str, level: int = 10) -> bool:
                 
     return True, 0
                 
+def pprint(at: int, string: str, color: str) -> None:
+    
+    COLOR_CODE: str = "\033[93m" if color == "red" else "\033[92m"
+    
+    for id, char in enumerate(string):
+        if id >= at:
+            print(f"{COLOR_CODE}{char}\033[00m", end="")
+        else:
+            print(char, end="")
+    print("\n")
                 
 def print_diff(old_val: str, new_val: str, linenum: int, 
                col: int, at: int, filename: str) -> None:
-    print(f"{filename}: Values do not match at line {linenum}, column {col}:")
-    print(f"Current:  {new_val}")
+    
+    print(f"{filename}: Values do \033[91m not match \033[00m at line {linenum}, column {col}:")
+    print("Current:  ", end="")
+    pprint(at, new_val, "red")
+        
     print((" " * (at + 10))+ ("^" * (len(new_val) - at)))
-    print(f"Original: {old_val}\n") 
+    print("Original: ", end="") 
+    pprint(at, old_val, "green")
     
 
 def compare():
@@ -69,12 +84,16 @@ def compare():
                     print_diff(old_val, new_val, i, j, at, new_file)   
                     diff_count += 1
                     
-        print(f"Detected {diff_count} diffs on file {new_file}")
+        print(f"Detected \033[91m {diff_count}\033[00m diffs on file {new_file}")
         input("...Continue [ENTER]\n")
                 
             
 if __name__ == "__main__":
-    SystemExit(compare())
+    try: 
+        SystemExit(compare())
+        
+    except KeyboardInterrupt:
+        print("")
             
             
             
