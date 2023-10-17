@@ -439,6 +439,31 @@ void setAccelarationToZero() {
     }
 }
 
+/** Macros namespace for vectorization using AVX compiler intrinsics. */
+
+#define VECT_ENABLE
+
+#ifdef VECT_ENABLE
+
+    #define vector __m256d // 256 bits available, we're using 4 packet doubles.
+
+    /* Setters/Loaders/Storers */
+    #define load(value) _mm256_loadu_pd(value)
+    #define set(value) _mm256_set1_pd(value)
+    #define store(to, value) _mm256_storeu_pd(to, value)
+
+    /* Arithmetic operations */
+    #define add(a, b) _mm256_add_pd(a, b) // a + b
+    #define sub(a, b) _mm256_sub_pd(a, b) // a - b
+    #define mul(a, b) _mm256_mul_pd(a, b) // a * m
+    #define div(a, b) _mm256_div_pd(a, b) // a / b
+
+    /* Custom operations */
+    #define mul3(a, b, c) _mm256_mul_pd(a, _mm256_mul_pd(b, c)) // Multiplies 3 vectors.
+    #define mul4(a, b, c, d) _mm256_mul_pd(_mm256_mul_pd(a, b), _mm256_mul_pd(c, d)) // Multiplies 4 vectors.
+
+#endif
+
 /**
  * Calculate the Lennard-Jones force between particles at a given distance.
  *
@@ -449,25 +474,17 @@ void setAccelarationToZero() {
  *
  * @return The Lennard-Jones force.
  */
-__m256d lennardJonesForce(__m256d rSqd) {
+vector lennardJonesForce(vector rSqd) {
     
-    __m256d InvrSqd = _mm256_div_pd(_mm256_set1_pd(1.), rSqd);
+    vector InvrSqd = div(set(1.), rSqd);
+    vector InvrSqd4 = mul4(InvrSqd, InvrSqd, InvrSqd, InvrSqd);
+    vector InvrSqd7 = mul4(InvrSqd4, InvrSqd, InvrSqd, InvrSqd);
 
-    __m256d InvrSqd4 = _mm256_mul_pd(
-        _mm256_mul_pd(InvrSqd, InvrSqd),
-        _mm256_mul_pd(InvrSqd, InvrSqd)
-    );
-
-    __m256d InvrSqd7 = _mm256_mul_pd(
-        _mm256_mul_pd(InvrSqd4, InvrSqd),
-        _mm256_mul_pd(InvrSqd, InvrSqd)
-    );
-
-    return _mm256_mul_pd(
-        _mm256_set1_pd(24.),
-        _mm256_sub_pd(
-            _mm256_mul_pd(
-                _mm256_set1_pd(2.),
+    return mul(
+        set(24.),
+        sub(
+            mul(
+                set(2.),
                 InvrSqd7
             ),
             InvrSqd4
@@ -485,19 +502,16 @@ __m256d lennardJonesForce(__m256d rSqd) {
  *
  * @return The Lennard-Jones potential energy.
  */
-__m256d potentialEnergy(__m256d rSqd) {
+vector potentialEnergy(vector rSqd) {
 
-    __m256d term2 = _mm256_div_pd(
-        _mm256_set1_pd(sigma_over_6),
-        _mm256_mul_pd(
-            rSqd,
-            _mm256_mul_pd(rSqd, rSqd)
-        )
+    vector term2 = div(
+        set(sigma_over_6),
+        mul3(rSqd, rSqd, rSqd)
     );
 
-    __m256d term1 = _mm256_mul_pd(term2, term2);
+    vector term1 = mul(term2, term2);
 
-    return _mm256_sub_pd(term1, term2);
+    return sub(term1, term2);
 }
 
 /**
@@ -510,9 +524,9 @@ __m256d potentialEnergy(__m256d rSqd) {
  */
 double computeAccelerationsAndPotential() {
 
-    __m256d ai[3], ri[3], rij[3], f, rSqd, potential;
+    vector ai[3], ri[3], rij[3], f, rSqd, potential;
 
-    potential = _mm256_set1_pd(0.0);
+    potential = set(0.0);
 
     setAccelarationToZero();
 
@@ -520,8 +534,8 @@ double computeAccelerationsAndPotential() {
     {
         for(int k = 0; k < 3; k++) {
 
-            ri[k] = _mm256_loadu_pd(&r[k][i]);
-            ai[k] = _mm256_set1_pd(0.0);
+            ri[k] = load(&r[k][i]);
+            ai[k] = set(0.0);
 
         }
 
@@ -529,15 +543,15 @@ double computeAccelerationsAndPotential() {
         for (int j = i + 1; j < N; j += 4) {
 
             for (int k = 0; k < 3; k++) {
-                __m256d rkj = _mm256_loadu_pd(&r[k][j]);
-                rij[k] = _mm256_sub_pd(ri[k], rkj);
+                vector rkj = load(&r[k][j]);
+                rij[k] = sub(ri[k], rkj);
             }
 
-            rSqd = _mm256_add_pd(
-                _mm256_mul_pd(rij[0], rij[0]),
-                _mm256_add_pd(
-                    _mm256_mul_pd(rij[1], rij[1]),
-                    _mm256_mul_pd(rij[2], rij[2])
+            rSqd = add(
+                mul(rij[0], rij[0]),
+                add(
+                    mul(rij[1], rij[1]),
+                    mul(rij[2], rij[2])
                 )
             );
 
@@ -545,26 +559,26 @@ double computeAccelerationsAndPotential() {
 
             for (int k = 0; k < 3; k++)
             {
-                rij[k] = _mm256_mul_pd(rij[k], f);
-                ai[k] = _mm256_add_pd(ai[k], rij[k]);
+                rij[k] = mul(rij[k], f);
+                ai[k] = add(ai[k], rij[k]);
 
                 // meter fora do inner loop acumulador
-                __m256d sub = _mm256_sub_pd(_mm256_loadu_pd(&a[k][j]), rij[k]);
-                _mm256_storeu_pd(&a[k][j], sub);
+                vector sub = sub(load(&a[k][j]), rij[k]);
+                store(&a[k][j], sub);
             }
 
-            __m256d pmult = _mm256_add_pd(potential, _mm256_mul_pd(_mm256_set1_pd(2.), potentialEnergy(rSqd)));
+            vector pmult = add(potential, mul(set(2.), potentialEnergy(rSqd)));
             potential = pmult;
         }
         for (int k = 0; k < 3; k++) {
     
-            __m256d add = _mm256_add_pd(_mm256_loadu_pd(&a[k][i]), ai[k]);
-            _mm256_storeu_pd(&a[k][i], add);
+            vector add = add(load(&a[k][i]), ai[k]);
+            store(&a[k][i], add);
         }
     }
 
     double result[4];
-    _mm256_storeu_pd(result, potential);
+    store(result, potential);
 
     return epsilon_times_4 * (result[0] + result[1] + result[2] + result[3]);
 }
