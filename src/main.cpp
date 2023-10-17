@@ -58,13 +58,13 @@ double L;
 double Tinit;  //2;
 // Vectors!
 //
-const int MAXPART=5001;
+const int MAXPART=5000; // changed because of alignment
 //  Position
 double r[3][MAXPART] __attribute__((aligned(32)));
 //  Velocity
 double v[3][MAXPART] __attribute__((aligned(32)));
 //  Acceleration
-double a[MAXPART][3] __attribute__((aligned(32)));
+double a[3][MAXPART] __attribute__((aligned(32)));
 
 // atom type
 char atype[10];
@@ -432,9 +432,11 @@ double Kinetic() { //Write Function here!
  * @return None, but updates the accelerations in the 'a' array.
  */
 void setAccelarationToZero() {
-    for (int i = 0; i < N; i++) // set all accelerations to zero
-        for (int k = 0; k < 3; k++)
-            a[i][k] = 0;
+    int i, k;
+    
+    for (i = 0; i < N; i++) {
+        for (k = 0; k < 3; k++) a[k][i] = 0;
+    }
 }
 
 /**
@@ -447,11 +449,30 @@ void setAccelarationToZero() {
  *
  * @return The Lennard-Jones force.
  */
-double lennardJonesForce(double rSqd) {
-    double InvrSqd = 1. / rSqd;
-    double InvrSqd4 = InvrSqd * InvrSqd * InvrSqd * InvrSqd;
-    double InvrSqd7 = InvrSqd4 * InvrSqd * InvrSqd * InvrSqd;
-    return 24 * (2 * InvrSqd7 - InvrSqd4);
+__m256d lennardJonesForce(__m256d rSqd) {
+    
+    __m256d InvrSqd = _mm256_div_pd(_mm256_set1_pd(1.), rSqd);
+
+    __m256d InvrSqd4 = _mm256_mul_pd(
+        _mm256_mul_pd(InvrSqd, InvrSqd),
+        _mm256_mul_pd(InvrSqd, InvrSqd)
+    );
+
+    __m256d InvrSqd7 = _mm256_mul_pd(
+        _mm256_mul_pd(InvrSqd4, InvrSqd),
+        _mm256_mul_pd(InvrSqd, InvrSqd)
+    );
+
+    return _mm256_mul_pd(
+        _mm256_set1_pd(24.),
+        _mm256_sub_pd(
+            _mm256_mul_pd(
+                _mm256_set1_pd(2.),
+                InvrSqd7
+            ),
+            InvrSqd4
+        )
+    );
 }
 
 /**
@@ -464,112 +485,108 @@ double lennardJonesForce(double rSqd) {
  *
  * @return The Lennard-Jones potential energy.
  */
-double potentialEnergy(double rSqd) {
-    double term2 = sigma_over_6 / (rSqd * rSqd * rSqd);
-    double term1 = term2 * term2;
-    return term1 - term2;
+__m256d potentialEnergy(__m256d rSqd) {
+
+    __m256d term2 = _mm256_div_pd(
+        _mm256_set1_pd(sigma_over_6),
+        _mm256_mul_pd(
+            rSqd,
+            _mm256_mul_pd(rSqd, rSqd)
+        )
+    );
+
+    __m256d term1 = _mm256_mul_pd(term2, term2);
+
+    return _mm256_sub_pd(term1, term2);
 }
 
-#define div_Vector _mm256_div_pd
-#define add_Vector _mm256_add_pd
-#define sub_Vector _mm256_sub_pd
-#define mult_Vector _mm256_mul_pd
-#define create_Vector_array(a) _mm256_set_pd(a[3], a[2], a[1], a[0])
-#define create_Vector_value _mm256_set1_pd
-#define load_Vector _mm256_loadu_pd
-#define store_Vector _mm256_storeu_pd
-#define Vector __m256d
+/**
+ * Calculate accelerations and potential energy for particles in the simulation.
+ *
+ * This function computes the accelerations of particles due to inter-particle forces
+ * using the Lennard-Jones potential and calculates the potential energy of the system.
+ *
+ * @return The total potential energy of the system, and the accelerations are updated in the 'a' array.
+ */
+double computeAccelerationsAndPotential() {
 
+    __m256d ai[3], ri[3], rij[3], f, rSqd, potential;
 
-Vector lennardJonesForceVector(Vector rSqd) {
-    Vector InvrSqd = div_Vector(create_Vector_value(1.0), rSqd);
-    Vector InvrSqd4 = mult_Vector(mult_Vector(InvrSqd, InvrSqd), mult_Vector(InvrSqd, InvrSqd));
-    Vector InvrSqd7 = mult_Vector(InvrSqd4, mult_Vector(mult_Vector(InvrSqd, InvrSqd),InvrSqd));
-    return mult_Vector(create_Vector_value(24.0), sub_Vector(add_Vector(InvrSqd7, InvrSqd7), InvrSqd4));
-}
+    potential = _mm256_set1_pd(0.0);
 
-
-Vector potentialEnergyVector(Vector rSqdVector) {
-    Vector term2Vector = div_Vector(create_Vector_value(sigma_over_6), mult_Vector(mult_Vector(rSqdVector, rSqdVector), rSqdVector));
-    Vector term1Vector = mult_Vector(term2Vector, term2Vector);
-    return sub_Vector(term1Vector, term2Vector);
-}
-
-double sumVector(Vector vect){
-    double sum = 0.0;
-    double vectArray[4];
-    store_Vector(vectArray, vect);
-    for(int i = 0; i < 4; i++)
-        sum += vectArray[i];
-    return sum;
-}
-
-
-double computeAccelerationsAndPotentialAVX() {
-    double ai[3],ri[3],rij[3],f,rSqd,rijA[3][4];
-    Vector rijV[3],rijVsqd[3];
-    
-    Vector potential = create_Vector_value(0.0);
     setAccelarationToZero();
 
     for (int i = 0; i < N - 1; i++)
     {
-        //store the position of the particle i and set the acceleration to zero
-        for (int k = 0; k < 3; k++){
-            ri[k] = r[k][i];
-            ai[k] = 0.0;
+        for(int k = 0; k < 3; k++) {
+
+            ri[k] = _mm256_loadu_pd(&r[k][i]);
+            ai[k] = _mm256_set1_pd(0.0);
+
         }
-        int j=i+1;
-        int lastValueVectorizable = N-((N-(i+1))%4);
-        for (; j < lastValueVectorizable; j+=4){
-            //difence in each coordinate between particle i and j
 
-            for (int k = 0; k < 3; k++){
-                rijV[k] = sub_Vector(create_Vector_value(ri[k]),load_Vector(&r[k][j]));
-                rijVsqd[k] = mult_Vector(rijV[k],rijV[k]);
+        // Fix iterations
+        for (int j = i + 1; j < N; j += 4) {
+
+            for (int k = 0; k < 3; k++) {
+                __m256d rkj = _mm256_loadu_pd(&r[k][j]);
+                rij[k] = _mm256_sub_pd(ri[k], rkj);
             }
-            //squared of the distance between particle i and j
-            Vector rSqdV = add_Vector(add_Vector(rijVsqd[0],rijVsqd[1]),rijVsqd[2]);
 
-            //forces applied to particle i and j
-            Vector fv = lennardJonesForceVector(rSqdV);
-
-            for (int k = 0; k < 3; k++){
-                rijV[k] = mult_Vector(rijV[k],fv);
-                ai[k] += sumVector(rijV[k]);
-                store_Vector(rijA[k], rijV[k]);
-                for(int p=0;p<4;p++)
-                    a[j+p][k] -= rijA[k][p];
-            }
-            potential = add_Vector(potential,potentialEnergyVector(rSqdV));
-        }
-        for (; j < N; j++){
-            for (int k = 0; k < 3; k++)
-                rij[k] = ri[k] - r[k][j];
-        
-            rSqd = rij[0] * rij[0] + rij[1] * rij[1] + rij[2] * rij[2];
+            rSqd = _mm256_add_pd(
+                _mm256_mul_pd(rij[0], rij[0]),
+                _mm256_add_pd(
+                    _mm256_mul_pd(rij[1], rij[1]),
+                    _mm256_mul_pd(rij[2], rij[2])
+                )
+            );
 
             f = lennardJonesForce(rSqd);
 
-            for (int k = 0; k < 3; k++){
-                rij[k] *= f;
-                ai[k] += rij[k];
-                a[j][k] -= rij[k];
+            for (int k = 0; k < 3; k++)
+            {
+                rij[k] = _mm256_mul_pd(rij[k], f);
+                ai[k] = _mm256_add_pd(ai[k], rij[k]);
+
+                // meter fora do inner loop acumulador
+                __m256d sub = _mm256_sub_pd(_mm256_loadu_pd(&a[k][j]), rij[k]);
+                _mm256_storeu_pd(&a[k][j], sub);
             }
 
-            potential += potentialEnergy(rSqd);
-
+            __m256d pmult = _mm256_add_pd(potential, _mm256_mul_pd(_mm256_set1_pd(2.), potentialEnergy(rSqd)));
+            potential = pmult;
         }
-        for (int k = 0; k < 3; k++) a[i][k] += ai[k];
+        for (int k = 0; k < 3; k++) {
+    
+            __m256d add = _mm256_add_pd(_mm256_loadu_pd(&a[k][i]), ai[k]);
+            _mm256_storeu_pd(&a[k][i], add);
+        }
     }
-    return 2 * epsilon_times_4 * sumVector(potential);
+
+    double result[4];
+    _mm256_storeu_pd(result, potential);
+
+    return epsilon_times_4 * (result[0] + result[1] + result[2] + result[3]);
 }
 
+double lennardJonesForceNonVectorized(double rSqd) {
+    double InvrSqd = 1. / rSqd;
+    double InvrSqd4 = InvrSqd * InvrSqd * InvrSqd * InvrSqd;
+    double InvrSqd7 = InvrSqd4 * InvrSqd * InvrSqd * InvrSqd;
+    return 24 * (2 * InvrSqd7 - InvrSqd4);
+}
 
-
-//   Uses the derivative of the Lennard-Jones potential to calculate
-//   the forces on each atom.  Then uses a = F/m to calculate the
-//   accelleration of each atom. 
+/**
+ * Calculate particle accelerations based on inter-particle forces using the Lennard-Jones potential.
+ *
+ * This function computes the accelerations of particles based on the derivative of the Lennard-Jones potential
+ * and uses Newton's second law (F = ma) to calculate the acceleration of each particle.
+ *
+ * @note The function assumes that necessary variables like N, r, and a are declared and initialized
+ * before calling this function. It also relies on the 'lennardJonesForce' function to compute forces.
+ *
+ * @return None, but updates the accelerations in the 'a' array.
+ */
 void computeAccelerations() {
 
     double ai[3], ri[3], rij[3],
@@ -589,16 +606,16 @@ void computeAccelerations() {
             for(int k = 0; k < 3; k++) rij[k] = ri[k] - r[k][j];
             rSqd = rij[0] * rij[0] + rij[1] * rij[1] + rij[2] * rij[2];
 
-            f = lennardJonesForce(rSqd);
+            f = lennardJonesForceNonVectorized(rSqd);
 
             for (int k = 0; k < 3; k++)
             {
                 rij[k] *= f;
                 ai[k] += rij[k];
-                a[j][k] -= rij[k];
+                a[k][j] -= rij[k];
             }
         }
-        for (int k = 0; k < 3; k++) a[i][k] += ai[k];
+        for (int k = 0; k < 3; k++) a[k][i] += ai[k];
     }
 }
 
@@ -630,17 +647,17 @@ double VelocityVerletAndPotential(double dt, int iter, FILE *fp, double *potenti
     */
     for (i = 0; i < N; i++) {
         for (j = 0; j < 3; j++) {
-            r[j][i] += v[j][i] * dt + 0.5 * a[i][j] * dt * dt;
-            v[j][i] += 0.5 * a[i][j] * dt;
+            r[j][i] += v[j][i] * dt + 0.5 * a[j][i] * dt * dt;
+            v[j][i] += 0.5 * a[j][i] * dt;
         }
     }
-    //  Update accellerations from updated positions
-    *potentialEnergy=computeAccelerationsAndPotentialAVX();
-    //  Update velocity with updated acceleration
-    for (i=0; i<N; i++) {
-        for (j=0; j<3; j++) {
-            v[j][i] += 0.5*a[i][j]*dt;
-        }
+
+    // Update accellerations from updated positions.
+    *potentialEnergy = computeAccelerationsAndPotential();
+
+    // Update velocity with updated acceleration.
+    for (i = 0; i < N; i++) {
+        for (j = 0; j < 3; j++) v[j][i] += 0.5 * a[j][i] * dt;
     }
     
     // Elastic walls.
