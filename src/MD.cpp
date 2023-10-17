@@ -508,8 +508,9 @@ double sumVector(Vector vect){
 double computeAccelerationsAndPotentialAVX() {
     double ai[3],ri[3],rij[3],f,rSqd,rijA[3][4];
     Vector rijV[3],rijVsqd[3];
-    
+
     Vector potential = create_Vector_value(0.0);
+    double pot = 0.0;
     setAccelarationToZero();
 
     for (int i = 0; i < N - 1; i++)
@@ -557,12 +558,12 @@ double computeAccelerationsAndPotentialAVX() {
                 a[j][k] -= rij[k];
             }
 
-            potential += potentialEnergy(rSqd);
+            pot += potentialEnergy(rSqd);
 
         }
         for (int k = 0; k < 3; k++) a[i][k] += ai[k];
     }
-    return 2 * epsilon_times_4 * sumVector(potential);
+    return 2 * epsilon_times_4 * (sumVector(potential)+pot);
 }
 
 
