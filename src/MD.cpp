@@ -406,13 +406,9 @@ double Kinetic() { //Write Function here!
 
 
 void setAccelarationToZero() {
-    int i, k;
-    
-    for (i = 0; i < N; i++) {  // set all accelerations to zero
-        for (k = 0; k < 3; k++) {
+    for (int i = 0; i < N; i++) // set all accelerations to zero
+        for (int k = 0; k < 3; k++)
             a[i][k] = 0;
-        }
-    }
 }
 double lennardJonesForce(double rSqd) {
     double InvrSqd = 1./rSqd;
@@ -426,40 +422,102 @@ double potentialEnergy(double rSqd){
     return term1 - term2;
 }
 
-double computeAccelerationsAndPotential() {
-    double ai[3],ri[3],rij[3],f,rSqd,potential;
-    potential = 0.0;
+#define div_Vector _mm256_div_pd
+#define add_Vector _mm256_add_pd
+#define sub_Vector _mm256_sub_pd
+#define mult_Vector _mm256_mul_pd
+#define create_Vector_array(a) _mm256_set_pd(a[3], a[2], a[1], a[0])
+#define create_Vector_value _mm256_set1_pd
+#define load_Vector _mm256_load_pd
+#define store_Vector _mm256_storeu_pd
+
+#define Vector __m256d
+
+
+Vector lennardJonesForceVector(Vector rSqd) {
+    Vector InvrSqd = div_Vector(create_Vector_value(1.0), rSqd);
+    Vector InvrSqd4 = mult_Vector(mult_Vector(InvrSqd, InvrSqd), mult_Vector(InvrSqd, InvrSqd));
+    Vector InvrSqd7 = mult_Vector(InvrSqd4, mult_Vector(mult_Vector(InvrSqd, InvrSqd),InvrSqd));
+    return mult_Vector(create_Vector_value(24.0), sub_Vector(add_Vector(InvrSqd7, InvrSqd7), InvrSqd4));
+}
+
+
+Vector potentialEnergyVector(Vector rSqdVector) {
+    Vector term2Vector = div_Vector(create_Vector_value(sigma_over_6), mult_Vector(mult_Vector(rSqdVector, rSqdVector), rSqdVector));
+    Vector term1Vector = mult_Vector(term2Vector, term2Vector);
+    return sub_Vector(term1Vector, term2Vector);
+}
+
+double sumVector(Vector vect){
+    double sum = 0.0;
+    double vectArray[4];
+    store_Vector(vectArray, vect);
+    for(int i = 0; i < 4; i++)
+        sum += vectArray[i];
+    return sum;
+}
+
+
+double computeAccelerationsAndPotentialAVX() {
+    double ai[3],ri[3],rij[3],f,rSqd,rijA[3][4];
+    Vector rijV[3],rijVsqd[3];
+    Vector potential = create_Vector_value(0.0);
     setAccelarationToZero();
 
     for (int i = 0; i < N - 1; i++)
     {
-        for(int k = 0; k < 3; k++) {
+        //store the position of the particle i and set the acceleration to zero
+        for (int k = 0; k < 3; k++){
             ri[k] = r[k][i];
             ai[k] = 0.0;
         }
+        int j=i+1;
+        int lastValueVectorizable = N-((N-(i+1))%4);
+        for (; j < lastValueVectorizable; j+=4){
+            //difence in each coordinate between particle i and j
 
-        for (int j = i + 1; j < N; j++){
+            for (int k = 0; k < 3; k++){
+                rijV[k] = sub_Vector(create_Vector_value(ri[k]),create_Vector_array((r[k]+j)));
+                rijVsqd[k] = mult_Vector(rijV[k],rijV[k]);
+            }
+            //squared of the distance between particle i and j
+            Vector rSqdV = add_Vector(add_Vector(rijVsqd[0],rijVsqd[1]),rijVsqd[2]);
 
-            for(int k = 0; k < 3; k++)
+            //forces applied to particle i and j
+            Vector fv = lennardJonesForceVector(rSqdV);
+
+            for (int k = 0; k < 3; k++){
+                rijV[k] = mult_Vector(rijV[k],fv);
+                ai[k] += sumVector(rijV[k]);
+                store_Vector(rijA[k], rijV[k]);
+                for(int p=0;p<4;p++)
+                    a[j+p][k] -= rijA[k][p];
+            }
+            potential = add_Vector(potential,potentialEnergyVector(rSqdV));
+        }
+        for (; j < N; j++){
+            for (int k = 0; k < 3; k++)
                 rij[k] = ri[k] - r[k][j];
-            
-            rSqd = (rij[0] * rij[0]) + (rij[1] * rij[1]) + (rij[2] * rij[2]);
+        
+            rSqd = rij[0] * rij[0] + rij[1] * rij[1] + rij[2] * rij[2];
 
             f = lennardJonesForce(rSqd);
 
-            for (int k = 0; k < 3; k++)
-            {
+            for (int k = 0; k < 3; k++){
                 rij[k] *= f;
                 ai[k] += rij[k];
                 a[j][k] -= rij[k];
             }
-            potential += 2 * potentialEnergy(rSqd);
+
+            potential += potentialEnergy(rSqd);
+
         }
         for (int k = 0; k < 3; k++)
             a[i][k] += ai[k];
     }
-    return epsilon_times_4 * potential;
+    return 2 * epsilon_times_4 * sumVector(potential);
 }
+
 
 
 //   Uses the derivative of the Lennard-Jones potential to calculate
@@ -515,7 +573,7 @@ double VelocityVerletAndPotential(double dt, int iter, FILE *fp, double *potenti
         }
     }
     //  Update accellerations from updated positions
-    *potentialEnergy=computeAccelerationsAndPotential();
+    *potentialEnergy=computeAccelerationsAndPotentialAVX();
     //  Update velocity with updated acceleration
     for (i=0; i<N; i++) {
         for (j=0; j<3; j++) {
