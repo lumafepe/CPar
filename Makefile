@@ -1,6 +1,6 @@
 CC = gcc
 SRC = src/
-CFLAGS = -O3 -fopt-info-vec-missed -march=native -ftree-vectorize -mavx
+CFLAGS = -O3 -march=native -ftree-vectorize -mavx # -fopt-info-vec-missed
 
 .DEFAULT_GOAL = MD.exe
 
@@ -28,18 +28,3 @@ graph-prof: run-prof
 	gprof2dot -o output.dot main.gprof
 	rm gmon.out
 	dot -Tpng -o output.png output.dot
-
-# Compiling for manual vectorization.
-
-VECT_FLAGS = -O3 -mavx -march=native -mtune=native
-
-magic: $(SRC)/main.cpp
-	$(CC) $(VECT_FLAGS) $(SRC)main.cpp -lm -o md_vect
-
-cast: 
-	./md_vect < inputdata.txt
-
-vanish:
-	rm cp_*
-	rm md_vect
-
