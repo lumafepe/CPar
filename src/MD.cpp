@@ -64,7 +64,7 @@ double r[3][MAXPART] __attribute__((aligned(32)));
 //  Velocity
 double v[3][MAXPART] __attribute__((aligned(32)));
 //  Acceleration
-double a[MAXPART][3] __attribute__((aligned(32)));
+double a[3][MAXPART] __attribute__((aligned(32)));
 
 // atom type
 char atype[10];
@@ -423,6 +423,16 @@ double Kinetic() { //Write Function here!
 }
 
 
+#define div_Vector _mm256_div_pd
+#define add_Vector _mm256_add_pd
+#define sub_Vector _mm256_sub_pd
+#define mult_Vector _mm256_mul_pd
+#define create_Vector_array(a) _mm256_set_pd(a[3], a[2], a[1], a[0])
+#define create_Vector_value _mm256_set1_pd
+#define load_Vector _mm256_loadu_pd
+#define store_Vector _mm256_storeu_pd
+#define Vector __m256d
+
 /**
  * Set accelerations to zero for all particles.
  *
@@ -432,9 +442,14 @@ double Kinetic() { //Write Function here!
  * @return None, but updates the accelerations in the 'a' array.
  */
 void setAccelarationToZero() {
-    for (int i = 0; i < N; i++) // set all accelerations to zero
-        for (int k = 0; k < 3; k++)
-            a[i][k] = 0;
+    Vector zero = create_Vector_value(0.);
+    for (int k = 0; k < 3; k++){
+        int i=0;
+        for (; i < N-(N%4); i+=4) // set all accelerations to zero
+            store_Vector(&a[k][i], zero);
+        for (; i < N; i++)
+            a[k][i]=0;
+    }
 }
 
 /**
@@ -470,16 +485,6 @@ double potentialEnergy(double rSqd) {
     return term1 - term2;
 }
 
-#define div_Vector _mm256_div_pd
-#define add_Vector _mm256_add_pd
-#define sub_Vector _mm256_sub_pd
-#define mult_Vector _mm256_mul_pd
-#define create_Vector_array(a) _mm256_set_pd(a[3], a[2], a[1], a[0])
-#define create_Vector_value _mm256_set1_pd
-#define load_Vector _mm256_loadu_pd
-#define store_Vector _mm256_storeu_pd
-#define Vector __m256d
-
 
 Vector lennardJonesForceVector(Vector rSqd) {
     Vector InvrSqd = div_Vector(create_Vector_value(1.0), rSqd);
@@ -511,8 +516,8 @@ double computeAccelerationsAndPotentialAVX() {
 
     Vector potential = create_Vector_value(0.0);
     double pot = 0.0;
-    setAccelarationToZero();
 
+    setAccelarationToZero();
     for (int i = 0; i < N - 1; i++)
     {
         //store the position of the particle i and set the acceleration to zero
@@ -538,9 +543,7 @@ double computeAccelerationsAndPotentialAVX() {
             for (int k = 0; k < 3; k++){
                 rijV[k] = mult_Vector(rijV[k],fv);
                 ai[k] += sumVector(rijV[k]);
-                store_Vector(rijA[k], rijV[k]);
-                for(int p=0;p<4;p++)
-                    a[j+p][k] -= rijA[k][p];
+                store_Vector(&a[k][j],sub_Vector(load_Vector(&a[k][j]),rijV[k]));
             }
             potential = add_Vector(potential,potentialEnergyVector(rSqdV));
         }
@@ -549,19 +552,15 @@ double computeAccelerationsAndPotentialAVX() {
                 rij[k] = ri[k] - r[k][j];
         
             rSqd = rij[0] * rij[0] + rij[1] * rij[1] + rij[2] * rij[2];
-
             f = lennardJonesForce(rSqd);
-
             for (int k = 0; k < 3; k++){
                 rij[k] *= f;
                 ai[k] += rij[k];
-                a[j][k] -= rij[k];
+                a[k][j] -= rij[k];
             }
-
             pot += potentialEnergy(rSqd);
-
         }
-        for (int k = 0; k < 3; k++) a[i][k] += ai[k];
+        for (int k = 0; k < 3; k++) a[k][i] += ai[k];
     }
     return 2 * epsilon_times_4 * (sumVector(potential)+pot);
 }
@@ -596,10 +595,10 @@ void computeAccelerations() {
             {
                 rij[k] *= f;
                 ai[k] += rij[k];
-                a[j][k] -= rij[k];
+                a[k][j] -= rij[k];
             }
         }
-        for (int k = 0; k < 3; k++) a[i][k] += ai[k];
+        for (int k = 0; k < 3; k++) a[k][i] += ai[k];
     }
 }
 
@@ -629,20 +628,18 @@ double VelocityVerletAndPotential(double dt, int iter, FILE *fp, double *potenti
     This call was removed (commented) for predagogical reasons computeAccelerations();
     Update positions and velocity with current velocity and acceleration.
     */
-    for (i = 0; i < N; i++) {
-        for (j = 0; j < 3; j++) {
-            r[j][i] += v[j][i] * dt + 0.5 * a[i][j] * dt * dt;
-            v[j][i] += 0.5 * a[i][j] * dt;
+    for (j = 0; j < 3; j++){
+        for (i = 0; i < N; i++) {
+            r[j][i] += v[j][i] * dt + 0.5 * a[j][i] * dt * dt;
+            v[j][i] += 0.5 * a[j][i] * dt;
         }
     }
     //  Update accellerations from updated positions
     *potentialEnergy=computeAccelerationsAndPotentialAVX();
     //  Update velocity with updated acceleration
-    for (i=0; i<N; i++) {
-        for (j=0; j<3; j++) {
-            v[j][i] += 0.5*a[i][j]*dt;
-        }
-    }
+    for (j=0; j<3; j++)
+        for (i=0; i<N; i++)
+            v[j][i] += 0.5*a[j][i]*dt;
     
     // Elastic walls.
     for (i = 0; i < N; i++) {
