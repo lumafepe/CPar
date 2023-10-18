@@ -3,8 +3,7 @@
 #include <stdio.h>
 #include <immintrin.h>
 
-
-/** Macros namespace for vectorization using AVX compiler intrinsics. */
+/* Macros namespace for vectorization using AVX compiler intrinsics. */
 
 #define vector __m256d // 256 bits available, we're using 4 packet doubles.
 
@@ -22,6 +21,25 @@
 /* Custom operations */
 #define mul3(a, b, c) _mm256_mul_pd(a, _mm256_mul_pd(b, c)) // Multiplies 3 vectors.
 #define mul4(a, b, c, d) _mm256_mul_pd(_mm256_mul_pd(a, b), _mm256_mul_pd(c, d)) // Multiplies 4 vectors.
+
+
+/**
+ * Represents properties of an atom used in a molecular dynamics simulation.
+ */
+typedef struct AtomProperties {
+    double VolFac;   // Volume scaling factor.
+    double PressFac; // Pressure scaling factor.
+    double TempFac;  // Temperature scaling factor.
+    double timefac;  // Time scaling factor.
+} AtomProperties;
+
+/**
+ * Set of helper functions used on main().
+ */
+void getTitle(char *prefix, char *tfn, char *ofn, char *afn);
+void getGasType(char *atomType);
+void getAtomProperties(double *VolFac, double *TempFac, double *PressFac, double *timefac, char* atype);
+void getParameters(double *rho, double *Vol, double VolFac, double TempFac);
 
 /**
  * Initialize particle positions and velocities.
