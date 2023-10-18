@@ -654,8 +654,18 @@ double VelocityVerletAndPotential(double dt, int iter, FILE *fp, double *potenti
     This call was removed (commented) for predagogical reasons computeAccelerations();
     Update positions and velocity with current velocity and acceleration.
     */
+    Vector dtV = create_Vector_value(dt);
+    Vector dtV05 = create_Vector_value(dt*0.5);
     for (j = 0; j < 3; j++){
-        for (i = 0; i < N; i++) {
+        int i = 0;
+        for (; i < N-(N%4); i+=4) {
+            Vector vji = load_Vector(&v[j][i]);
+            Vector aji = load_Vector(&a[j][i]);
+            Vector rji = load_Vector(&r[j][i]);
+            store_Vector(&r[j][i],add_Vector(rji,mult_Vector(dtV,add_Vector(vji,mult_Vector(dtV05,aji)))));
+            store_Vector(&v[j][i],add_Vector(vji,mult_Vector(dtV05,aji)));
+        }
+        for (;i<N;i++){
             r[j][i] += v[j][i] * dt + 0.5 * a[j][i] * dt * dt;
             v[j][i] += 0.5 * a[j][i] * dt;
         }
@@ -663,22 +673,22 @@ double VelocityVerletAndPotential(double dt, int iter, FILE *fp, double *potenti
     //  Update accellerations from updated positions
     *potentialEnergy=computeAccelerationsAndPotentialAVX();
     //  Update velocity with updated acceleration
-    for (j=0; j<3; j++)
-        for (i=0; i<N; i++)
+    for (j=0; j<3; j++){
+        int i=0;
+        for (; i<N-(N%4); i+=4){
+            Vector vji = load_Vector(&v[j][i]);
+            Vector aji = load_Vector(&a[j][i]);
+            store_Vector(&v[j][i],add_Vector(vji,mult_Vector(dtV05,aji)));
+        }
+        for (; i<N; i++){
             v[j][i] += 0.5*a[j][i]*dt;
-    
-    // Elastic walls.
-    for (i = 0; i < N; i++) {
-        for (j = 0; j < 3; j++) {
-
-            if (r[j][i] < 0.) {
+        }
+        
+        // Elastic walls.
+        for (i = 0; i < N; i++) {
+            if (r[j][i] < 0.|| r[j][i] >= L) {
                 v[j][i] *= -1.; // Elastic walls.
                 psum += 2 * m * fabs(v[j][i]) / dt;  // Contribution to pressure from "left" walls.
-            }
-
-            if (r[j][i] >= L) {
-                v[j][i] *= -1.;  // Elastic walls.
-                psum += 2 * m * fabs(v[j][i]) / dt;  // Contribution to pressure from "right" walls.
             }
         }
     }
