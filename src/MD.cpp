@@ -512,7 +512,7 @@ double sumVector(Vector vect){
 
 double computeAccelerationsAndPotentialAVX() {
     double ai[3],ri[3],rij[3],f,rSqd,rijA[3][4];
-    Vector rijV[3],rijVsqd[3];
+    Vector rijV[3],rijVsqd[3],aiV[3];
 
     Vector potential = create_Vector_value(0.0);
     double pot = 0.0;
@@ -524,6 +524,7 @@ double computeAccelerationsAndPotentialAVX() {
         for (int k = 0; k < 3; k++){
             ri[k] = r[k][i];
             ai[k] = 0.0;
+            aiV[k] = create_Vector_value(0.0);
         }
         int j=i+1;
         int lastValueVectorizable = N-((N-(i+1))%4);
@@ -542,7 +543,7 @@ double computeAccelerationsAndPotentialAVX() {
 
             for (int k = 0; k < 3; k++){
                 rijV[k] = mult_Vector(rijV[k],fv);
-                ai[k] += sumVector(rijV[k]);
+                aiV[k] = add_Vector(aiV[k],rijV[k]);
                 store_Vector(&a[k][j],sub_Vector(load_Vector(&a[k][j]),rijV[k]));
             }
             potential = add_Vector(potential,potentialEnergyVector(rSqdV));
@@ -560,7 +561,10 @@ double computeAccelerationsAndPotentialAVX() {
             }
             pot += potentialEnergy(rSqd);
         }
-        for (int k = 0; k < 3; k++) a[k][i] += ai[k];
+        for (int k = 0; k < 3; k++) {
+            a[k][i] += sumVector(aiV[k]);
+            a[k][i] += ai[k];
+        }
     }
     return 2 * epsilon_times_4 * (sumVector(potential)+pot);
 }
