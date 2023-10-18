@@ -576,33 +576,55 @@ double computeAccelerationsAndPotentialAVX() {
 //   accelleration of each atom. 
 void computeAccelerations() {
 
-    double ai[3], ri[3], rij[3],
-           f, rSqd;
+    double ai[3],ri[3],rij[3],f,rSqd,rijA[3][4];
+    Vector rijV[3],rijVsqd[3],aiV[3];
     
     setAccelarationToZero();
-
     for (int i = 0; i < N - 1; i++)
     {
-        for(int k = 0; k < 3; k++) {
+        //store the position of the particle i and set the acceleration to zero
+        for (int k = 0; k < 3; k++){
             ri[k] = r[k][i];
             ai[k] = 0.0;
+            aiV[k] = create_Vector_value(0.0);
         }
+        int j=i+1;
+        int lastValueVectorizable = N-((N-(i+1))%4);
+        for (; j < lastValueVectorizable; j+=4){
+            //difence in each coordinate between particle i and j
 
-        for (int j = i + 1; j < N; j++) {
-            
-            for(int k = 0; k < 3; k++) rij[k] = ri[k] - r[k][j];
-            rSqd = rij[0] * rij[0] + rij[1] * rij[1] + rij[2] * rij[2];
+            for (int k = 0; k < 3; k++){
+                rijV[k] = sub_Vector(create_Vector_value(ri[k]),load_Vector(&r[k][j]));
+                rijVsqd[k] = mult_Vector(rijV[k],rijV[k]);
+            }
+            //squared of the distance between particle i and j
+            Vector rSqdV = add_Vector(add_Vector(rijVsqd[0],rijVsqd[1]),rijVsqd[2]);
 
-            f = lennardJonesForce(rSqd);
+            //forces applied to particle i and j
+            Vector fv = lennardJonesForceVector(rSqdV);
 
+            for (int k = 0; k < 3; k++){
+                rijV[k] = mult_Vector(rijV[k],fv);
+                aiV[k] = add_Vector(aiV[k],rijV[k]);
+                store_Vector(&a[k][j],sub_Vector(load_Vector(&a[k][j]),rijV[k]));
+            }
+        }
+        for (; j < N; j++){
             for (int k = 0; k < 3; k++)
-            {
+                rij[k] = ri[k] - r[k][j];
+        
+            rSqd = rij[0] * rij[0] + rij[1] * rij[1] + rij[2] * rij[2];
+            f = lennardJonesForce(rSqd);
+            for (int k = 0; k < 3; k++){
                 rij[k] *= f;
                 ai[k] += rij[k];
                 a[k][j] -= rij[k];
             }
         }
-        for (int k = 0; k < 3; k++) a[k][i] += ai[k];
+        for (int k = 0; k < 3; k++) {
+            a[k][i] += sumVector(aiV[k]);
+            a[k][i] += ai[k];
+        }
     }
 }
 
