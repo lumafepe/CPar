@@ -8,9 +8,10 @@
 #define vector __m256d // 256 bits available, we're using 4 packet doubles.
 
 /* Set, load and store operations */
-#define load _mm256_loadu_pd
+#define load _mm256_load_pd
 #define set _mm256_set1_pd
-#define store _mm256_storeu_pd
+#define set0 _mm256_setzero_pd
+#define store _mm256_store_pd
 
 /* Arithmetic operations */
 #define add _mm256_add_pd // a + b
@@ -19,6 +20,7 @@
 #define div _mm256_div_pd // a / b
 
 /* Custom operations */
+#define add3(a, b, c) _mm256_add_pd(a, _mm256_add_pd(b, c)) // Adds 3 vectors.
 #define mul3(a, b, c) _mm256_mul_pd(a, _mm256_mul_pd(b, c)) // Multiplies 3 vectors.
 #define mul4(a, b, c, d) _mm256_mul_pd(_mm256_mul_pd(a, b), _mm256_mul_pd(c, d)) // Multiplies 4 vectors.
 
@@ -90,7 +92,7 @@ void setAccelerationToZero();
  *
  * @return The Lennard-Jones force.
  */
-vector lennardJonesForceVector(double rSqd);
+vector lennardJonesForceVector(double rSqd,double InvrSqd3);
 
 /**
  * Calculate the Lennard-Jones force between particles at a given distance.
@@ -104,7 +106,7 @@ vector lennardJonesForceVector(double rSqd);
  *
  * @return The Lennard-Jones force.
  */
-vector lennardJonesForceVector(vector rSqd);
+vector lennardJonesForceVector(vector rSqd,vector InvrSqd3);
 
 /**
  * Calculate the Lennard-Jones potential energy at a given distance.
@@ -116,7 +118,7 @@ vector lennardJonesForceVector(vector rSqd);
  *
  * @return The Lennard-Jones potential energy.
  */
-double potentialEnergy(double rSqd);
+double potentialEnergy(double InvrSqd3);
 
 /**
  * Calculate the Lennard-Jones potential energy at a given distance.
@@ -130,7 +132,7 @@ double potentialEnergy(double rSqd);
  *
  * @return The Lennard-Jones potential energy.
  */
-vector potentialEnergyVector(vector rSqd);
+vector potentialEnergyVector(vector InvrSqd3);
 
 /**
  * Sums the elements of a vector and returns the result.
