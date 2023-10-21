@@ -1,24 +1,24 @@
 CC = gcc
 SRC = src/
-CFLAGS = -O3 -march=native -ftree-vectorize -mavx -Wall # -fopt-info-vec-missed
+CFLAGS = -O3 -march=native -ftree-vectorize -mavx -Wall # -fopt-info-vec-all
 
-.DEFAULT_GOAL = MD.exe
+.DEFAULT_GOAL = md.exe
 
-MD.exe: $(SRC)/MD.cpp
-	$(CC) $(CFLAGS) $(SRC)MD.cpp -lm -o MD.exe
+md.exe: $(SRC)md.cpp
+	$(CC) $(CFLAGS) $(SRC)md.cpp -lm -o md.exe
 
 clean:
-	rm ./MD.exe
+	rm ./md.exe
 
 run:
-	./MD.exe < inputdata.txt
+	./md.exe < inputdata.txt
 
 # Compiling for performance testing.
 
 PROF_FLAGS = -pg
 
-prof: $(SRC)/MD.cpp
-	$(CC) $(CFLAGS) $(PROF_FLAGS) $(SRC)MD.cpp -lm -o prof_md
+prof: $(SRC)/md.cpp
+	$(CC) $(CFLAGS) $(PROF_FLAGS) $(SRC)md.cpp -lm -o prof_md
 
 run-prof: prof
 	./prof_md < inputdata.txt
@@ -28,3 +28,4 @@ graph-prof: run-prof
 	gprof2dot -o output.dot main.gprof
 	rm gmon.out
 	dot -Tpng -o output.png output.dot
+

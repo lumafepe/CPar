@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <math.h>
 
-#include "MD.h"
+#include "md.h"
 
 
 int N = 10 * 216; // Number of particles.
@@ -11,9 +11,11 @@ int N = 10 * 216; // Number of particles.
 // Lennard-Jones parameters in natural units!
 double sigma = 1.,
        sigma_over_6 = sigma;
-vector V1=set(1.0),
-       V24=set(24.0),
-       Vsigma6=set(sigma_over_6);
+
+vector V1 = set(1.0),
+       V24 = set(24.0),
+       Vsigma6 = set(sigma_over_6);
+
 double epsilon = 1.,
        epsilon_times_4 = 4 * epsilon;
 
@@ -37,126 +39,6 @@ const char* fileHeaders[] = {
     " --------------   -----------        ---------------   --------------   ---------------   ------------   -----------\n"
 }; // Output file table headers.
 
-/* Helper function, ignore */
-void getTitle(char *prefix, char *tfn, char *ofn, char *afn) {
-
-    printf("Welcome!\n");
-    printf("Calculation title: ");
-
-    scanf("%s", prefix);
-
-    /* Trajectory file */
-    strcpy(tfn, prefix);
-    strcat(tfn, "_traj.xyz");
-
-    /* Output file */
-    strcpy(ofn, prefix);
-    strcat(ofn, "_output.txt");
-
-    /* Average file */
-    strcpy(afn, prefix);
-    strcat(afn, "_average.txt");
-
-    printf("> Title is set to '%s'\n\n", prefix);
-
-}
-
-/* Helper function, ignore */
-void getGasType(char *atomType) {
-
-    printf("Which noble gas would you like to simulate ?\n");
-    printf("+ Helium - He\n");
-    printf("+ Neon - Ne\n");
-    printf("+ Argon - Ar\n");
-    printf("+ Krypton - Kr\n");
-    printf("+ Xeon - Xe\n");
-
-    printf("Atom type (defaults to Ar): ");
-    scanf("%s", atomType);
-
-    printf("Using the gas '%s'\n\n", atomType);
-
-}
-
-/* Helper function, ignore */
-void getAtomProperties(double *VolFac, double *TempFac, double *PressFac, double *timefac, char* atype) {
-
-    AtomProperties atomPropertiesMap[] = {
-    {1.8399744000000005e-29, 8152287.336171632, 10.864459551225972, 1.7572698825166272e-12}, // He
-    {2.0570823999999997e-29, 27223022.27659913, 40.560648991243625, 2.1192341945685407e-12}, // Ne
-    {3.7949992920124995e-29, 51695201.06691862, 142.0950000000000, 2.09618e-12},             // Ar
-    {4.5882712000000004e-29, 59935428.40275003, 199.1817584391428, 8.051563913585078e-13},   // Kr
-    {5.4872e-29, 70527773.72794868, 280.30305642163006, 9.018957925790732e-13}               // Xe
-    };
-
-    int atomIndex = 2; // Default type is Argon.
-    long unsigned i, len = sizeof(atomPropertiesMap) / sizeof(atomPropertiesMap[0]);
-    for (i = 0; i < len; i++) {
-        if (strcmp(atype, "He") == 0) { atomIndex = 0; break; }
-        else if (strcmp(atype, "Ne") == 0) { atomIndex = 1; break; }
-        else if (strcmp(atype, "Ar") == 0) { atomIndex = 2; break; }
-        else if (strcmp(atype, "Kr") == 0) { atomIndex = 3; break; }
-        else if (strcmp(atype, "Xe") == 0) { atomIndex = 4; break; }
-    }
-
-    *VolFac = atomPropertiesMap[atomIndex].VolFac;
-    *TempFac = atomPropertiesMap[atomIndex].TempFac;
-    *PressFac = atomPropertiesMap[atomIndex].PressFac;
-    *timefac = atomPropertiesMap[atomIndex].timefac;
-}
-
-/* Helper function, ignore */
-void getParameters(double *rho, double *Vol, double VolFac, double TempFac) {
-
-    printf("You will now enter the simulation parameters:\n");
-    printf("Initial temperature (Kº) of the gas: ");
-    scanf("%lf", &Tinit);
-
-    if (Tinit < 0.) {
-        printf("Absolute temperature must be a positive number.\n");
-        exit(EXIT_FAILURE);
-    }
-
-    printf("\nEnter the number density in moles/m^3: ");
-    scanf("%lf", rho);
-
-    Tinit /= TempFac; // Convert temperature into natural units.
-    *Vol = N / (*rho * NA);
-    *Vol /= VolFac; // Convert volume into natural units.
-
-    // Limiting N to MAXPART for practical reasons.
-    if (N >= MAXPART) {
-        printf("\nThe maximum number of particles is %d, please adjust your input file accordingly.\n", MAXPART);
-        exit(EXIT_FAILURE);
-    }
-
-    //  Check to see if the volume makes sense - is it too small?
-    //  Remember VDW radius of the particles is 1 natural unit of length
-    //  and volume = L*L*L, so if V = N*L*L*L = N, then all the particles
-    //  will be initialized with an inter-particle separation equal to 2xVDW radius.
-    if (*Vol < N) {
-        printf("\nYour density is very high, simulations with density greater than 1 particle may diverge.\n");
-        exit(EXIT_FAILURE);
-    }
-
-    L = pow(*Vol,(1./3)); // Length of the box in natural units.
-}
-
-/* Helper function, ignore */
-void printResults(char *tfn, char *ofn, char *afn, double Tavg, double Pavg, double gc, double VolNat, double Z) {
-
-    printf("> To animate your simulation, open the file '%s' with VMD after the simulation completes.\n", tfn);
-    printf("> To analyze instantaneous data about your molecule, open the file '%s' with your favorite text editor.\n\n", ofn);
-
-    printf("> The following thermodynamic averages will be computed and written to the file '%s':\n", afn);
-    printf("    > AVERAGE TEMPERATURE (K):                 %15.5f\n", Tavg);
-    printf("    > AVERAGE PRESSURE  (Pa):                  %15.5f\n", Pavg);
-    printf("    > PV/nT (J * mol^-1 K^-1):                 %15.5f\n", gc);
-    printf("    > PERCENT ERROR of pV/nT AND GAS CONSTANT: %15.5f\n", 100 * fabs(gc - 8.3144598) / 8.3144598);
-    printf("    > THE COMPRESSIBILITY (unitless):          %15.5f \n", Z);
-    printf("    > TOTAL VOLUME (m^3):                      %10.5e \n", VolNat);
-    printf("    > NUMBER OF PARTICLES (unitless):          %d \n", N);
-}
 
 /**
  * Molecular Dynamics simulation of a gas system.
@@ -484,13 +366,15 @@ double computeAccelerationsAndPotentialVector() {
 
         int j = i + 1;
 
-        for (; j%4!=0; j++) {
+        for (; j % 4 != 0; j++) {
 
             for (int k = 0; k < 3; k++) rij[k] = ri[k] - r[k][j];
         
             rSqd = rij[0] * rij[0] + rij[1] * rij[1] + rij[2] * rij[2];
-            double InvrSqd = 1/rSqd;
+
+            double InvrSqd = 1 / rSqd;
             double InvrSqd3 = (InvrSqd * InvrSqd * InvrSqd);
+
             f = lennardJonesForce(InvrSqd,InvrSqd3);
 
             for (int k = 0; k < 3; k++){
@@ -514,9 +398,9 @@ double computeAccelerationsAndPotentialVector() {
             vector rSqdV = add3(rijVsqd[0], rijVsqd[1],rijVsqd[2]); // rijVsqd[0] + rijVsqd[1] + rijVsqd[2]
             vector InvrSqdV = div(V1,rSqdV); // 1 / rSqdV
             vector InvrSqdV3 = mul3(InvrSqdV, InvrSqdV, InvrSqdV); // rSqdV ^ 3
+
             // Forces applied to particle i and j.
             vector fv = lennardJonesForceVector(InvrSqdV,InvrSqdV3);
-
 
             for (int k = 0; k < 3; k++) {
                 rijV[k] = mul(rijV[k], fv); // rijV[k] * fv
@@ -737,4 +621,173 @@ double gaussdist() {
         return gset;
         
     }
+}
+
+/* Helper functions used to retrieve user input and show results. ================================================= */
+
+/**
+ * Retrieve simulation title.
+ *
+ * This function retrieves via user input the simulation title and prepends it to
+ * the filenames to be outputted as a result of the simulation.
+ *
+ * @param prefix Output variable that will contain the simulation title.
+ * @param tfn Trajectory output filename.
+ * @param ofn Generic output filename.
+ * @param afn Average values output filename.
+ */
+void getTitle(char *prefix, char *tfn, char *ofn, char *afn) {
+
+    printf("Welcome!\n");
+    printf("Calculation title: ");
+
+    scanf("%s", prefix);
+
+    /* Trajectory file */
+    strcpy(tfn, prefix);
+    strcat(tfn, "_traj.xyz");
+
+    /* Output file */
+    strcpy(ofn, prefix);
+    strcat(ofn, "_output.txt");
+
+    /* Average file */
+    strcpy(afn, prefix);
+    strcat(afn, "_average.txt");
+
+    printf("> Title is set to '%s'\n\n", prefix);
+}
+
+/**
+ * Retrieve preferred gas type.
+ *
+ * This function shows a menu with the possible values for the gas parameter
+ * and retrieves via user input the chosen one.
+ *
+ * @note If no value is provided by the user, it defaults to Argon.
+ *
+ * @param atomType Output variable that will contain the gas type.
+ */
+void getGasType(char *atomType) {
+
+    printf("Which noble gas would you like to simulate ?\n");
+    printf("+ Helium - He\n");
+    printf("+ Neon - Ne\n");
+    printf("+ Argon - Ar\n");
+    printf("+ Krypton - Kr\n");
+    printf("+ Xeon - Xe\n");
+
+    printf("Atom type (defaults to Ar): ");
+    scanf("%s", atomType);
+
+    printf("Using the gas '%s'\n\n", atomType);
+}
+
+/**
+ * Get atom properties from the chosen gas.
+ *
+ * This function gets the atom properties corresponding the chosen atom type.
+ *
+ * @param VolFac Output variable, volume scaling factor.
+ * @param TempFac Output variable, pressure scaling factor.
+ * @param PressFac Output variable, temperature scaling factor.
+ * @param timefac Output variable, time scaling factor.
+ *
+ * @param atype Gas chosen.
+ */
+void getAtomProperties(double *VolFac, double *TempFac, double *PressFac, double *timefac, char* atype) {
+
+    AtomProperties atomPropertiesMap[] = {
+            {1.8399744000000005e-29, 8152287.336171632, 10.864459551225972, 1.7572698825166272e-12}, // He
+            {2.0570823999999997e-29, 27223022.27659913, 40.560648991243625, 2.1192341945685407e-12}, // Ne
+            {3.7949992920124995e-29, 51695201.06691862, 142.0950000000000, 2.09618e-12},             // Ar
+            {4.5882712000000004e-29, 59935428.40275003, 199.1817584391428, 8.051563913585078e-13},   // Kr
+            {5.4872e-29, 70527773.72794868, 280.30305642163006, 9.018957925790732e-13}               // Xe
+    };
+
+    int atomIndex = 2; // Default type is Argon.
+    long unsigned i, len = sizeof(atomPropertiesMap) / sizeof(atomPropertiesMap[0]);
+    for (i = 0; i < len; i++) {
+        if (strcmp(atype, "He") == 0) { atomIndex = 0; break; }
+        else if (strcmp(atype, "Ne") == 0) { atomIndex = 1; break; }
+        else if (strcmp(atype, "Ar") == 0) { atomIndex = 2; break; }
+        else if (strcmp(atype, "Kr") == 0) { atomIndex = 3; break; }
+        else if (strcmp(atype, "Xe") == 0) { atomIndex = 4; break; }
+    }
+
+    *VolFac = atomPropertiesMap[atomIndex].VolFac;
+    *TempFac = atomPropertiesMap[atomIndex].TempFac;
+    *PressFac = atomPropertiesMap[atomIndex].PressFac;
+    *timefac = atomPropertiesMap[atomIndex].timefac;
+}
+
+/**
+ * This function is used to get the simulation parameters from the user.
+ *
+ * @param rho Pointer to the number density in moles/m^3.
+ * @param Vol Pointer to the volume of the gas.
+ * @param VolFac Volume conversion factor.
+ * @param TempFac Temperature conversion factor.
+ */
+void getParameters(double *rho, double *Vol, double VolFac, double TempFac) {
+
+    printf("You will now enter the simulation parameters:\n");
+    printf("Initial temperature (Kº) of the gas: ");
+    scanf("%lf", &Tinit);
+
+    if (Tinit < 0.) {
+        printf("Absolute temperature must be a positive number.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    printf("\nEnter the number density in moles/m^3: ");
+    scanf("%lf", rho);
+
+    Tinit /= TempFac; // Convert temperature into natural units.
+    *Vol = N / (*rho * NA);
+    *Vol /= VolFac; // Convert volume into natural units.
+
+    // Limiting N to MAXPART for practical reasons.
+    if (N >= MAXPART) {
+        printf("\nThe maximum number of particles is %d, please adjust your input file accordingly.\n", MAXPART);
+        exit(EXIT_FAILURE);
+    }
+
+    // Check to see if the volume makes sense - is it too small?
+    // Remember VDW radius of the particles is 1 natural unit of length
+    // and volume = L*L*L, so if V = N*L*L*L = N, then all the particles
+    // will be initialized with an inter-particle separation equal to 2xVDW radius.
+    if (*Vol < N) {
+        printf("\nYour density is very high, simulations with density greater than 1 particle may diverge.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    L = pow(*Vol,(1./3)); // Length of the box in natural units.
+}
+
+/**
+ * @brief This function is used to print the results of the simulation.
+ *
+ * @param tfn Pointer to the trajectory file name.
+ * @param ofn Pointer to the output file name.
+ * @param afn Pointer to the averages file name.
+ * @param Tavg Average temperature in Kelvin.
+ * @param Pavg Average pressure in Pascal.
+ * @param gc Gas constant in J * mol^-1 K^-1.
+ * @param VolNat Total volume in m^3.
+ * @param Z The compressibility (unit-less).
+ */
+void printResults(char *tfn, char *ofn, char *afn, double Tavg, double Pavg, double gc, double VolNat, double Z) {
+
+    printf("> To animate your simulation, open the file '%s' with VMD after the simulation completes.\n", tfn);
+    printf("> To analyze instantaneous data about your molecule, open the file '%s' with your favorite text editor.\n\n", ofn);
+
+    printf("> The following thermodynamic averages will be computed and written to the file '%s':\n", afn);
+    printf("    > AVERAGE TEMPERATURE (K):                 %15.5f\n", Tavg);
+    printf("    > AVERAGE PRESSURE  (Pa):                  %15.5f\n", Pavg);
+    printf("    > PV/nT (J * mol^-1 K^-1):                 %15.5f\n", gc);
+    printf("    > PERCENT ERROR of pV/nT AND GAS CONSTANT: %15.5f\n", 100 * fabs(gc - 8.3144598) / 8.3144598);
+    printf("    > THE COMPRESSIBILITY (unit-less):          %15.5f \n", Z);
+    printf("    > TOTAL VOLUME (m^3):                      %10.5e \n", VolNat);
+    printf("    > NUMBER OF PARTICLES (unit-less):          %d \n", N);
 }

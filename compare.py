@@ -20,7 +20,7 @@ def is_fp(value_str: str) -> bool:
     except ValueError as _:
         return False
 
-def at_most_equal(a: str, b: str, level: int = 10) -> bool:
+def at_most_equal(a: str, b: str, level: int = 12) -> bool:
     
     at: int = 0
     
@@ -81,7 +81,8 @@ def compare():
             for j, (new_val, old_val) in enumerate(zip(new_values, old_values)):
                 cmp, at = at_most_equal(new_val, old_val)
                 if not cmp:
-                    print_diff(old_val, new_val, i, j, at, new_file)   
+                    print_diff(old_val, new_val, i, j, at, new_file)
+                    print("")
                     diff_count += 1
                     
         print(f"Detected \033[91m{diff_count}\033[00m diffs on file {new_file}")

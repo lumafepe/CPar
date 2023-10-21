@@ -38,10 +38,69 @@ typedef struct AtomProperties {
 /**
  * Set of helper functions used on main().
  */
+
+/**
+ * Retrieve simulation title.
+ *
+ * This function retrieves via user input the simulation title and prepends it to
+ * the filenames to be outputted as a result of the simulation.
+ *
+ * @param prefix Output variable that will contain the simulation title.
+ * @param tfn Trajectory output filename.
+ * @param ofn Generic output filename.
+ * @param afn Average values output filename.
+ */
 void getTitle(char *prefix, char *tfn, char *ofn, char *afn);
+
+/**
+ * Retrieve preferred gas type.
+ *
+ * This function shows a menu with the possible values for the gas parameter
+ * and retrieves via user input the chosen one.
+ *
+ * @note If no value is provided by the user, it defaults to Argon.
+ *
+ * @param atomType Output variable that will contain the gas type.
+ */
 void getGasType(char *atomType);
+
+/**
+ * Get atom properties from the chosen gas.
+ *
+ * This function gets the atom properties corresponding the chosen atom type.
+ *
+ * @param VolFac Output variable, volume scaling factor.
+ * @param TempFac Output variable, pressure scaling factor.
+ * @param PressFac Output variable, temperature scaling factor.
+ * @param timefac Output variable, time scaling factor.
+ *
+ * @param atype Gas chosen.
+ */
 void getAtomProperties(double *VolFac, double *TempFac, double *PressFac, double *timefac, char* atype);
+
+/**
+ * This function is used to get the simulation parameters from the user.
+ *
+ * @param rho Pointer to the number density in moles/m^3.
+ * @param Vol Pointer to the volume of the gas.
+ * @param VolFac Volume conversion factor.
+ * @param TempFac Temperature conversion factor.
+ */
 void getParameters(double *rho, double *Vol, double VolFac, double TempFac);
+
+/**
+ * @brief This function is used to print the results of the simulation.
+ *
+ * @param tfn Pointer to the trajectory file name.
+ * @param ofn Pointer to the output file name.
+ * @param afn Pointer to the averages file name.
+ * @param Tavg Average temperature in Kelvin.
+ * @param Pavg Average pressure in Pascal.
+ * @param gc Gas constant in J * mol^-1 K^-1.
+ * @param VolNat Total volume in m^3.
+ * @param Z The compressibility (unit-less).
+ */
+void printResults(char *tfn, char *ofn, char *afn, double Tavg, double Pavg, double gc, double VolNat, double Z);
 
 /**
  * Initialize particle positions and velocities.
