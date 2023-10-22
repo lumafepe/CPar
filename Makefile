@@ -5,13 +5,13 @@ CFLAGS = -O3 -march=native -ftree-vectorize -mavx -Wall # -fopt-info-vec-all
 .DEFAULT_GOAL = md.exe
 
 md.exe: $(SRC)md.cpp
-	$(CC) $(CFLAGS) $(SRC)md.cpp -lm -o md.exe
+	$(CC) $(CFLAGS) $(SRC)md.cpp -lm -o MD.exe
 
 clean:
-	rm ./md.exe
+	rm ./MD.exe
 
 run:
-	./md.exe < inputdata.txt
+	./MD.exe < inputdata.txt
 
 # Compiling for performance testing.
 
