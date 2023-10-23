@@ -132,7 +132,7 @@ int main()
 
         fprintf(
             ofp,
-            "  %.11e  %.11e  %.11e %.11e  %.11e  %.11e \n",
+            "  %8.4e  %20.8f  %20.8f %20.8f  %20.8f  %20.8f \n",
             (i * dt * timefac), Temp, Press, KE, PE, KE + PE
         ); // Write values to output file.
     }
@@ -149,7 +149,7 @@ int main()
     fprintf(afp,"%s", fileHeaders[2]);
     fprintf(
         afp,
-        "  %.11e  %.11e       %.11e     %.11e       %.11e        %.11e         %i\n",
+        "  %8.4e  %15.5f       %15.5f     %10.5f       %10.5f        %10.5e         %i\n",
         i * dt * timefac, Tavg, Pavg, gc, Z, Vol * VolFac, N
     );
 
