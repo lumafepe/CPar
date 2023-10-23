@@ -14,6 +14,7 @@ double sigma = 1.,
 
 vector V1 = set(1.0),
        V24 = set(24.0),
+       V48 = set(48.0),
        Vsigma6 = set(sigma_over_6);
 
 double epsilon = 1.,
@@ -274,18 +275,7 @@ double lennardJonesForce(double InvrSqd,double InvrSqd3) {
 vector lennardJonesForceVector(vector InvrSqdV,vector InvrSqdV3) {
 
     vector InvrSqdV4 = mul(InvrSqdV, InvrSqdV3); // InvrSqd ^ 4
-    vector InvrSqdV7 = mul3(InvrSqdV,InvrSqdV3, InvrSqdV3); // InvrSqd ^ 7
-
-    return mul(
-        V24,
-        sub(
-            add(
-                InvrSqdV7,
-                InvrSqdV7
-            ),
-            InvrSqdV4
-        )
-    ); // 24 * (2 * InvrSqd7 - InvrSqd4)
+    return mul(InvrSqdV4,sub(mul(V48,InvrSqdV3),V24)); // 24 * (2 * InvrSqd7 - InvrSqd4)
 }
 
 /**
