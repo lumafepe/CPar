@@ -12,6 +12,7 @@
 #define set _mm256_set1_pd
 #define set0 _mm256_setzero_pd
 #define store _mm256_store_pd
+#define loadu _mm256_loadu_pd
 
 /* Arithmetic operations */
 #define add _mm256_add_pd // a + b

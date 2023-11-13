@@ -11,12 +11,16 @@ destination_folder="idfk"
 sshpass -p "$password" ssh "$username"@s7edu.di.uminho.pt "rm -rf ~/$destination_folder/*"
 
 # Copy the contents of the current folder to the remote server
-rsync -avz -e "sshpass -p '$password' ssh" ./ "$username"@s7edu.di.uminho.pt:~/$destination_folder/
+rsync -avz -e "sshpass -p '$password' ssh" ./ "$username"@s7edu.di.uminho.pt:~/$destination_folder/ >> /dev/null
 
 # SSH into the remote server and execute the desired commands
 sshpass -p "$password" ssh "$username"@s7edu.di.uminho.pt << EOF
 cd ~/$destination_folder/
-make clean
-make
-srun --partition=cpar perf stat -r 3 -M cpi,instructions -e branch-misses,L1-dcache-load-misses,cycles,duration_time,mem-loads,mem-stores make run
+sbatch --partition=cpar --cpus-per-task=40 -W runner.sh
+for file in slurm-*; do
+    if [[ -f "\$file" ]]; then
+        echo "Processing file: \$file"
+        cat "\$file"
+    fi
+done
 EOF

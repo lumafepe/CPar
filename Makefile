@@ -1,6 +1,6 @@
 CC = gcc
 SRC = src/
-CFLAGS = -O3 -march=native -ftree-vectorize -mavx -Wall # -fopt-info-vec-all
+CFLAGS = -O3 -march=native -ftree-vectorize -mavx -Wall -fopenmp -fno-omit-frame-pointer -g -I/share/apps/papi/5.4.1/include -L/share/apps/papi/5.4.1/lib# -fopt-info-vec-all
 
 .DEFAULT_GOAL = md.exe
 
