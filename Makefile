@@ -1,29 +1,47 @@
 CC = gcc
-SRC = src/
-CFLAGS = -O3 -march=native -ftree-vectorize -mavx -Wall -fopenmp -fno-omit-frame-pointer -g -I/share/apps/papi/5.4.1/include -L/share/apps/papi/5.4.1/lib# -fopt-info-vec-all
+SRC = src
+CFLAGS = -O3 -march=native -ftree-vectorize -mavx -Wall -fno-omit-frame-pointer -lm# -fopt-info-vec-all
 
-.DEFAULT_GOAL = md.exe
+.DEFAULT_GOAL = all
 
-md.exe: $(SRC)md.cpp
-	$(CC) $(CFLAGS) $(SRC)md.cpp -lm -o MD.exe
+all: MDseq.exe MDpar.exe
+
+MDseq.exe: $(SRC)/MDseq.cpp
+	$(CC) $(CFLAGS) $< -o $@
+MDpar.exe: $(SRC)/MDpar.cpp
+	$(CC) $(CFLAGS) -fopenmp $< -o $@
 
 clean:
-	rm ./MD.exe
+	rm ./MD*.exe
 
-run:
-	./MD.exe < inputdata.txt
+runseq:
+	./MDseq.exe < inputdata.txt
+
+runpar:
+	./MDpar.exe < inputdata.txt
 
 # Compiling for performance testing.
 
 PROF_FLAGS = -pg
+profSeq: $(SRC)/MDseq.cpp
+	$(CC) $(CFLAGS) $(PROF_FLAGS) $< -lm -o prof_md
 
-prof: $(SRC)/md.cpp
-	$(CC) $(CFLAGS) $(PROF_FLAGS) $(SRC)md.cpp -lm -o prof_md
-
-run-prof: prof
+run-profSeq: profSeq
 	./prof_md < inputdata.txt
 
-graph-prof: run-prof
+graph-profSeq: run-profSeq
+	gprof prof_md > main.gprof
+	gprof2dot -o output.dot main.gprof
+	rm gmon.out
+	dot -Tpng -o output.png output.dot
+
+profPar: $(SRC)/MDpar.cpp
+	$(CC) $(CFLAGS) $(PROF_FLAGS) $< -lm -o prof_md
+
+run-profPar: profSeq
+	./prof_md < inputdata.txt
+
+graph-profPar: run-profSeq
 	gprof prof_md > main.gprof
 	gprof2dot -o output.dot main.gprof
 	rm gmon.out

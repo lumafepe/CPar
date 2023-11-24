@@ -7,7 +7,7 @@
 #include "md.h"
 
 
-int N = 10 * 216; // Number of particles.
+int N = 5000; // Number of particles.
 
 // Lennard-Jones parameters in natural units!
 double sigma = 1.,
@@ -29,7 +29,7 @@ double m = 1.,
 double L, // Size of the box, which will be specified in natural units.
        Tinit; // Initial Temperature in Natural Units.
 
-const int MAXPART = 5000; // Maximum array size.
+const int MAXPART = 5004; // Maximum array size.
 
 double r[3][MAXPART] __attribute__((aligned(32))), // Position array.
        v[3][MAXPART] __attribute__((aligned(32))), // Velocity array.
@@ -247,7 +247,7 @@ double Kinetic() { //Write Function here!
  */
 void setAccelerationToZero() {
     vector zero = set0();
-
+    #pragma omp parallel for
     for (int k = 0; k < 3; k++) {
         int i = 0;
         for (; i < N - (N % 4); i += 4) store(&a[k][i], zero); /* vector acceleration array. */
@@ -324,6 +324,11 @@ double sumVector(vector vect) {
     return vect[0] + vect[1] + vect[2] + vect[3];
 }
 
+// Sum vectors in parallel.
+#pragma omp declare reduction(vec_add : vector : omp_out = add(omp_out,omp_in)) initializer(omp_priv = set0())
+
+
+
 /**
  * Calculates accelerations and the Lennard-Jones potential energy using AVX instructions.
  *
@@ -337,21 +342,18 @@ double sumVector(vector vect) {
  */
 double computeAccelerationsAndPotentialVector() {
 
-    double aiVA[3][N-1];
-    vector totalPotV=set0();
+    vector totalPotV = set0();
+    double totalPot = 0.;
     setAccelerationToZero();
     #pragma omp parallel
     {
-        vector potV=set0();
         double updates[3][N];
-        for (int k=0;k<3;k++)
-            for (int i=0;i<N;i++)
-                updates[k][i]=0;
-        #pragma omp for
+        for (int k=0;k<3;k++) for (int i=0;i<N;i++) updates[k][i]=0;
+        #pragma omp for reduction(vec_add:totalPotV) reduction(+:totalPot)
         for (int i = 0; i < N - 1; i++){
 
-            double ri[3],rSqd,f,rij[3];
-            vector aiV[3],riV[3],rijV[3],rijVsqd[3];
+            double ri[3],rSqd,f,rij[3],ai[3]={0,0,0};
+            vector riV[3],rijV[3],rijVsqd[3],aiV[3]={set0(),set0(),set0()};
 
             // Store the position of the particle i and set the acceleration to zero.
             for (int k = 0; k < 3; k++){
@@ -360,8 +362,6 @@ double computeAccelerationsAndPotentialVector() {
             }
 
             int j = i + 1;
-            double aiVTemp[3][4]  = {{0,0,0,0},{0,0,0,0},{0,0,0,0}};
-            double potVTemp[4] = {0,0,0,0};
 
             for (; j % 4 != 0; j++) {
                 for (int k = 0; k < 3; k++) rij[k] = ri[k] - r[k][j];
@@ -371,13 +371,12 @@ double computeAccelerationsAndPotentialVector() {
                 f = lennardJonesForce(InvrSqd,InvrSqd3);
                 for (int k = 0; k < 3; k++){
                     rij[k] *= f;
-                    aiVTemp[k][j%4] = rij[k];
+                    ai[k] += rij[k];
                     updates[k][j] -= rij[k];
                 }
-                potVTemp[j%4] = potentialEnergy(InvrSqd3);
+                totalPot += potentialEnergy(InvrSqd3);
             }
-            potV = add(potV,loadu(potVTemp));
-            for (int k=0;k<3;k++) aiV[k] = loadu(aiVTemp[k]);
+            
 
             for (; j < N; j += 4) {
 
@@ -401,31 +400,22 @@ double computeAccelerationsAndPotentialVector() {
                     store(&updates[k][j], sub(load(&updates[k][j]), rijV[k])); // a[k][j] = a[k][j] - rijV[k]
                 }
 
-                potV = add(potV, potentialEnergyVector(InvrSqdV3)); // Update potential energy.
+                totalPotV = add(totalPotV,potentialEnergyVector(InvrSqdV3)); // Update potential energy.
             }
 
             for (int k = 0; k < 3; k++)
-                aiVA[k][i] = sumVector(aiV[k]);
+                updates[k][i] += sumVector(aiV[k]) + ai[k];
         }
 
         #pragma omp critical
         {
-            totalPotV = add(totalPotV,potV);
             for (int k=0;k<3;k++)
                 for (int i=0;i<N;i+=4)
                     store(&a[k][i], add(load(&updates[k][i]), load(&a[k][i])));
         }
     }
-
-    #pragma omp parallel for
-    for (int k = 0;k<3;k++){
-        #pragma omp parallel for
-        for (int i=0;i<N-1;i++) 
-            a[k][i] += aiVA[k][i];
-    }
-    return 2 * epsilon_times_4 * sumVector(totalPotV);
+    return 2 * epsilon_times_4 * (sumVector(totalPotV)+totalPot);
 }
-
 
 /**
  * Calculates the accelerations of particles based on the Lennard-Jones potential.
