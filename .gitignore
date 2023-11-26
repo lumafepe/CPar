@@ -10,6 +10,7 @@ prof_md
 main.gprof
 # Prerequisites
 *.d
+.env
 
 # Object files
 *.o
