@@ -53,7 +53,7 @@ def plot_time(result: list[list[float | int]], plot_name: str = "plot.png"):
     x = data_array[:, 0]
     y = data_array[:, 1]
 
-    outlier_threshold: int = 90
+    outlier_threshold: int = 20
 
     # Replace outliers with the mean of the adjacent values
     for i in range(len(y)):
