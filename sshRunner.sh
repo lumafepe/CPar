@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# Set username and password as variables
-username=""
-password=""
+# Set username and password as variables.
+username="pg53851"
+password="6HOqc7mi"
 
-# Set the destination folder on the remote server
-destination_folder="idfk"
+# Set the destination folder on the remote server.
+destination_folder="auto"
 
 # Check if the first argument is provided
 if [ -z "$1" ]; then
