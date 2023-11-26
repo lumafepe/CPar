@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Set username and password as variables.
-username="pg53851"
-password="6HOqc7mi"
+username=""
+password=""
 
 # Set the destination folder on the remote server.
 destination_folder="auto"
