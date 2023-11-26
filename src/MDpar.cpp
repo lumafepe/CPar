@@ -247,7 +247,7 @@ double Kinetic() { //Write Function here!
  */
 void setAccelerationToZero() {
     vector zero = set0();
-    #pragma omp parallel for
+    #pragma omp parallel for schedule(dynamic)
     for (int k = 0; k < 3; k++) {
         int i = 0;
         for (; i < N - (N % 4); i += 4) store(&a[k][i], zero); /* vector acceleration array. */
@@ -349,7 +349,8 @@ double computeAccelerationsAndPotentialVector() {
     {
         double updates[3][N];
         for (int k=0;k<3;k++) for (int i=0;i<N;i++) updates[k][i]=0;
-        #pragma omp for reduction(vec_add:totalPotV) reduction(+:totalPot)
+        #pragma omp for schedule(dynamic) reduction(vec_add:totalPotV) reduction(+:totalPot)
+        // #pragma omp for reduction(vec_add:totalPotV) reduction(+:totalPot)
         for (int i = 0; i < N - 1; i++){
 
             double ri[3],rSqd,f,rij[3],ai[3]={0,0,0};
