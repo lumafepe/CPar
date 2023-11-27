@@ -5,26 +5,23 @@
 
 /* Macros namespace for vectorization using AVX compiler intrinsics. */
 
-#define vector __m256d // 256 bits available, we're using 4 packet doubles.
-
-/* Set, load and store operations */
-#define load _mm256_load_pd
-#define set _mm256_set1_pd
-#define set0 _mm256_setzero_pd
-#define store _mm256_store_pd
-#define loadu _mm256_loadu_pd
-
-/* Arithmetic operations */
-#define add _mm256_add_pd // a + b
-#define sub _mm256_sub_pd // a - b
-#define mul _mm256_mul_pd // a * m
-#define div _mm256_div_pd // a / b
-
-/* Custom operations */
-#define add3(a, b, c) _mm256_add_pd(a, _mm256_add_pd(b, c)) // Adds 3 vectors.
-#define mul3(a, b, c) _mm256_mul_pd(a, _mm256_mul_pd(b, c)) // Multiplies 3 vectors.
-#define mul4(a, b, c, d) _mm256_mul_pd(_mm256_mul_pd(a, b), _mm256_mul_pd(c, d)) // Multiplies 4 vectors.
-
+class Vector {
+private:
+    __m256d value;
+public:
+    Vector();
+    Vector(double initialValue);
+    Vector(__m256d initialValue);
+    Vector(double a, double b, double c, double d);
+    Vector(double* array);
+    void store(double* array) const;
+    __m256d getValue() const;
+    Vector operator+(const Vector& other) const;
+    Vector operator-(const Vector& other) const;
+    Vector operator*(const Vector& other) const;
+    Vector operator/(const Vector& other) const;
+    double sum() const;
+};
 
 /**
  * Represents properties of an atom used in a molecular dynamics simulation.
@@ -152,7 +149,7 @@ void setAccelerationToZero();
  *
  * @return The Lennard-Jones force.
  */
-vector lennardJonesForceVector(double rSqd,double InvrSqd3);
+double lennardJonesForceVector(double rSqd,double InvrSqd3);
 
 /**
  * Calculate the Lennard-Jones force between particles at a given distance.
@@ -166,7 +163,7 @@ vector lennardJonesForceVector(double rSqd,double InvrSqd3);
  *
  * @return The Lennard-Jones force.
  */
-vector lennardJonesForceVector(vector rSqd,vector InvrSqd3);
+Vector lennardJonesForceVector(Vector rSqd,Vector InvrSqd3);
 
 /**
  * Calculate the Lennard-Jones potential energy at a given distance.
@@ -192,7 +189,7 @@ double potentialEnergy(double InvrSqd3);
  *
  * @return The Lennard-Jones potential energy.
  */
-vector potentialEnergyVector(vector InvrSqd3);
+Vector potentialEnergyVector(Vector InvrSqd3);
 
 /**
  * Sums the elements of a vector and returns the result.
@@ -205,7 +202,7 @@ vector potentialEnergyVector(vector InvrSqd3);
  *
  * @return The sum of the elements in the vector.
  */
-double sumVector(vector vect);
+double sumVector(Vector vect);
 
 /**
  * Calculates accelerations and the Lennard-Jones potential energy using AVX instructions.

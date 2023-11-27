@@ -6,6 +6,48 @@
 
 #include "md.h"
 
+Vector::Vector(){
+    value = _mm256_setzero_pd();
+}
+Vector::Vector(double initialValue){
+    value = _mm256_set1_pd(initialValue);
+}
+Vector::Vector(__m256d initialValue){
+    value = initialValue;
+}
+Vector::Vector(double a, double b, double c, double d) {
+    value = _mm256_set_pd(d,c,b,a);
+}
+Vector::Vector(double* array) {
+    value = _mm256_load_pd(array);
+}
+void Vector::store(double* array) const {
+    _mm256_store_pd(array,value);
+}
+// Getter function to retrieve the current value
+__m256d Vector::getValue() const {
+    return value;
+}
+// Addition operator
+Vector Vector::operator+(const Vector& other) const {
+    return Vector(_mm256_add_pd(value,other.getValue()));
+}
+// Subtraction operator
+Vector Vector::operator-(const Vector& other) const {
+    return Vector(_mm256_sub_pd(value,other.getValue()));
+}
+// Multiplication operator
+Vector Vector::operator*(const Vector& other) const {
+    return Vector(_mm256_mul_pd(value,other.getValue()));
+}
+// Division operator
+Vector Vector::operator/(const Vector& other) const {
+    return Vector(_mm256_div_pd(value,other.getValue()));
+}
+double Vector::sum() const {
+    return value[0] + value[1] + value[2] + value[3];
+}
+
 
 int N = 5000; // Number of particles.
 
@@ -13,10 +55,10 @@ int N = 5000; // Number of particles.
 double sigma = 1.,
        sigma_over_6 = sigma;
 
-vector V1 = set(1.0),
-       V24 = set(24.0),
-       V48 = set(48.0),
-       Vsigma6 = set(sigma_over_6);
+Vector V1(1.0),
+       V24(24.0),
+       V48(48.0),
+       Vsigma6(sigma_over_6);
 
 double epsilon = 1.,
        epsilon_times_4 = 4 * epsilon;
@@ -237,6 +279,7 @@ double Kinetic() { //Write Function here!
     return kin;
 }
 
+
 /**
  * Set accelerations to zero for all particles.
  *
@@ -246,14 +289,14 @@ double Kinetic() { //Write Function here!
  * @return None, but updates the accelerations in the 'a' array.
  */
 void setAccelerationToZero() {
-    vector zero = set0();
-    #pragma omp parallel for schedule(dynamic)
+    Vector zero = Vector();
     for (int k = 0; k < 3; k++) {
         int i = 0;
-        for (; i < N - (N % 4); i += 4) store(&a[k][i], zero); /* vector acceleration array. */
+        for (; i < N - (N % 4); i += 4) zero.store(&a[k][i]); /* vector acceleration array. */
         for (; i < N; i++) a[k][i] = 0; /* Double acceleration array. */
     }
 }
+
 
 /**
  * Calculate the Lennard-Jones force between particles at a given distance.
@@ -273,10 +316,10 @@ double lennardJonesForce(double InvrSqd,double InvrSqd3) {
 }
 
 /* Vectorized version of the above function. */
-vector lennardJonesForceVector(vector InvrSqdV,vector InvrSqdV3) {
+Vector lennardJonesForceVector(Vector InvrSqdV,Vector InvrSqdV3) {
 
-    vector InvrSqdV4 = mul(InvrSqdV, InvrSqdV3); // InvrSqd ^ 4
-    return mul(InvrSqdV4,sub(mul(V48,InvrSqdV3),V24)); // 24 * (2 * InvrSqd7 - InvrSqd4)
+    Vector InvrSqdV4 = InvrSqdV * InvrSqdV3; // InvrSqd ^ 4
+    return InvrSqdV4 * ((V48*InvrSqdV3)-V24); // 24 * (2 * InvrSqd7 - InvrSqd4)
 }
 
 /**
@@ -297,37 +340,19 @@ double potentialEnergy(double InvrSqd3) {
 }
 
 /* Vectorized version of the above function. */
-vector potentialEnergyVector(vector InvrSqdV3) {
+Vector potentialEnergyVector(Vector InvrSqdV3) {
 
-    vector term2 = mul(
-        Vsigma6,
-        InvrSqdV3
-    ); // sigma_over_6 / (rSqd ^ 3)
+    Vector term2 = Vsigma6 * InvrSqdV3; // sigma_over_6 / (rSqd ^ 3)
 
-    vector term1 = mul(term2, term2); // term2 * term2
+    Vector term1 = term2 * term2; // term2 * term2
 
-    return sub(term1, term2); // term1 - term2
+    return term1 - term2; // term1 - term2
 }
 
-/**
- * Sums the elements of a vector and returns the result.
- *
- * This function takes a vector and calculates the sum of its elements.
- * It first copies the elements of the input vector to a temporary array
- * and then iterates through the array to compute the sum.
- *
- * @param vect The input vector to be summed.
- *
- * @return The sum of the elements in the vector.
- */
-double sumVector(vector vect) {
-    return vect[0] + vect[1] + vect[2] + vect[3];
-}
+
 
 // Sum vectors in parallel.
-#pragma omp declare reduction(vec_add : vector : omp_out = add(omp_out,omp_in)) initializer(omp_priv = set0())
-
-
+#pragma omp declare reduction(+ : Vector : omp_out = omp_out + omp_in) initializer(omp_priv = Vector())
 
 /**
  * Calculates accelerations and the Lennard-Jones potential energy using AVX instructions.
@@ -342,33 +367,33 @@ double sumVector(vector vect) {
  */
 double computeAccelerationsAndPotentialVector() {
 
-    vector totalPotV = set0();
+    Vector totalPotV;
     double totalPot = 0.;
     setAccelerationToZero();
-    #pragma omp parallel
+    
+    #pragma omp parallel reduction(+:a)
     {
-        double updates[3][N];
-        for (int k=0;k<3;k++) for (int i=0;i<N;i++) updates[k][i]=0;
-        #pragma omp for schedule(dynamic) reduction(vec_add:totalPotV) reduction(+:totalPot)
-        // #pragma omp for reduction(vec_add:totalPotV) reduction(+:totalPot)
+        double updates[3][MAXPART] __attribute__((aligned(32)))={0};
+        #pragma omp for schedule(dynamic) reduction(+:totalPot) reduction(+:totalPotV)
         for (int i = 0; i < N - 1; i++){
 
-            double ri[3],rSqd,f,rij[3],ai[3]={0,0,0};
-            vector riV[3],rijV[3],rijVsqd[3],aiV[3]={set0(),set0(),set0()};
+            double ri[3],rSqd,f,rij[3],ai[3];
+            Vector riV[3],rijV[3],rijVsqd[3],aiV[3];
 
             // Store the position of the particle i and set the acceleration to zero.
             for (int k = 0; k < 3; k++){
                 ri[k] = r[k][i];
-                riV[k] = set(r[k][i]);
+                riV[k] = Vector(r[k][i]);
+                ai[k] = 0.;
+                aiV[k] = Vector();
             }
 
             int j = i + 1;
-
             for (; j % 4 != 0; j++) {
                 for (int k = 0; k < 3; k++) rij[k] = ri[k] - r[k][j];
                 rSqd = rij[0] * rij[0] + rij[1] * rij[1] + rij[2] * rij[2];
                 double InvrSqd = 1 / rSqd;
-                double InvrSqd3 = (InvrSqd * InvrSqd * InvrSqd);
+                double InvrSqd3 = InvrSqd * InvrSqd * InvrSqd;
                 f = lennardJonesForce(InvrSqd,InvrSqd3);
                 for (int k = 0; k < 3; k++){
                     rij[k] *= f;
@@ -380,42 +405,34 @@ double computeAccelerationsAndPotentialVector() {
             
 
             for (; j < N; j += 4) {
-
                 // Difference in each coordinate between particle i and j.
                 for (int k = 0; k < 3; k++){
-                    rijV[k] = sub(riV[k], load(&r[k][j])); // ri[k] - r[k][j]
-                    rijVsqd[k] = mul(rijV[k], rijV[k]); // rijV[k] * rijV[k]
+                    rijV[k] = riV[k] - Vector(&r[k][j]); // ri[k] - r[k][j]
+                    rijVsqd[k] = rijV[k] * rijV[k]; // rijV[k] * rijV[k]
                 }
-
                 // Squared of the distance between particle i and j.
-                vector rSqdV = add3(rijVsqd[0], rijVsqd[1],rijVsqd[2]); // rijVsqd[0] + rijVsqd[1] + rijVsqd[2]
-                vector InvrSqdV = div(V1,rSqdV); // 1 / rSqdV
-                vector InvrSqdV3 = mul3(InvrSqdV, InvrSqdV, InvrSqdV); // rSqdV ^ 3
-
+                Vector rSqdV = rijVsqd[0] + rijVsqd[1] +rijVsqd[2]; // rijVsqd[0] + rijVsqd[1] + rijVsqd[2]
+                Vector InvrSqdV = V1 / rSqdV; // 1 / rSqdV
+                Vector InvrSqdV3 = InvrSqdV * InvrSqdV * InvrSqdV; // rSqdV ^ 3
                 // Forces applied to particle i and j.
-                vector fv = lennardJonesForceVector(InvrSqdV,InvrSqdV3);
-
+                Vector fv = lennardJonesForceVector(InvrSqdV,InvrSqdV3);
                 for (int k = 0; k < 3; k++) {
-                    rijV[k] = mul(rijV[k], fv); // rijV[k] * fv
-                    aiV[k] = add(aiV[k], rijV[k]); // aiV[k] + rijV[k]
-                    store(&updates[k][j], sub(load(&updates[k][j]), rijV[k])); // a[k][j] = a[k][j] - rijV[k]
+                    rijV[k] = rijV[k] * fv; // rijV[k] * fv
+                    aiV[k] = aiV[k] + rijV[k]; // aiV[k] + rijV[k]
+                    (Vector(&updates[k][j]) - rijV[k]).store(&updates[k][j]); // a[k][j] = a[k][j] - rijV[k]
                 }
-
-                totalPotV = add(totalPotV,potentialEnergyVector(InvrSqdV3)); // Update potential energy.
+                totalPotV = totalPotV + potentialEnergyVector(InvrSqdV3); // Update potential energy.
             }
-
             for (int k = 0; k < 3; k++)
-                updates[k][i] += sumVector(aiV[k]) + ai[k];
+                updates[k][i] += aiV[k].sum() + ai[k];
         }
-
-        #pragma omp critical
-        {
-            for (int k=0;k<3;k++)
-                for (int i=0;i<N;i+=4)
-                    store(&a[k][i], add(load(&updates[k][i]), load(&a[k][i])));
+        for (int i=0;i<N;i++){
+            a[0][i] += updates[0][i];
+            a[1][i] += updates[1][i];
+            a[2][i] += updates[2][i];
         }
     }
-    return 2 * epsilon_times_4 * (sumVector(totalPotV)+totalPot);
+    return 2 * epsilon_times_4 * totalPotV.sum()+ totalPot;
 }
 
 /**
