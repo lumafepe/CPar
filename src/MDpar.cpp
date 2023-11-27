@@ -350,6 +350,50 @@ Vector potentialEnergyVector(Vector InvrSqdV3) {
 }
 
 
+inline double loopNonSIMD(int i,int j,double updates[][MAXPART]){
+    double ri[3]={r[0][i],r[1][i],r[2][i]},rSqd,f,rij[3],ai[3]={0,0,0},pot=0;
+    for (; j % 4 != 0; j++) {
+        for (int k = 0; k < 3; k++) rij[k] = ri[k] - r[k][j];
+        rSqd = rij[0] * rij[0] + rij[1] * rij[1] + rij[2] * rij[2];
+        double InvrSqd = 1 / rSqd;
+        double InvrSqd3 = InvrSqd * InvrSqd * InvrSqd;
+        f = lennardJonesForce(InvrSqd,InvrSqd3);
+        for (int k = 0; k < 3; k++){
+            rij[k] = rij[k] * f;
+            ai[k] = ai[k] + rij[k];
+            updates[k][j] = updates[k][j] - rij[k];
+        }
+        pot = pot + potentialEnergy(InvrSqd3);
+    }
+    for (int k = 0; k < 3; k++)
+        updates[k][i] += ai[k];
+    return pot;
+}
+
+inline Vector loopSIMD(int i,int j,double updates[][MAXPART]){
+    Vector ri[3]={Vector(r[0][i]),Vector(r[1][i]),Vector(r[2][i])},rSqd,f,rij[3],ai[3]={Vector(),Vector(),Vector()},pot=Vector();
+    for (; j < N; j += 4) {
+        for (int k = 0; k < 3; k++) rij[k] = ri[k] - Vector(&r[k][j]);
+        rSqd = rij[0] * rij[0] + rij[1] * rij[1] +rij[2] * rij[2];
+        Vector InvrSqd = V1 / rSqd;
+        Vector InvrSqd3 = InvrSqd * InvrSqd * InvrSqd;
+        f = lennardJonesForceVector(InvrSqd,InvrSqd3);
+        for (int k = 0; k < 3; k++) {
+            rij[k] = rij[k] * f;
+            ai[k] = ai[k] + rij[k];
+            (Vector(&updates[k][j]) - rij[k]).store(&updates[k][j]);
+        }
+        pot = pot + potentialEnergyVector(InvrSqd3);
+    }
+    for (int k = 0; k < 3; k++)
+        updates[k][i] += ai[k].sum();
+    return pot;
+}
+
+
+
+
+
 
 // Sum vectors in parallel.
 #pragma omp declare reduction(+ : Vector : omp_out = omp_out + omp_in) initializer(omp_priv = Vector())
@@ -366,57 +410,16 @@ Vector potentialEnergyVector(Vector InvrSqdV3) {
  * @return The total Lennard-Jones potential energy for the system.
  */
 double computeAccelerationsAndPotentialVector() {
-
     Vector totalPotV;
     double totalPot = 0.;
     setAccelerationToZero();
-    
     #pragma omp parallel reduction(+:a)
     {
         double updates[3][MAXPART] __attribute__((aligned(32)))={0};
         #pragma omp for schedule(dynamic) reduction(+:totalPot) reduction(+:totalPotV)
         for (int i = 0; i < N - 1; i++){
-
-            double ri[3]={r[0][i],r[1][i],r[2][i]},rSqd,f,rij[3],ai[3]={0,0,0};
-            Vector riV[3]={Vector(r[0][i]),Vector(r[1][i]),Vector(r[2][i])},rijV[3],rijVsqd[3],aiV[3]={Vector(),Vector(),Vector()};
-
-            int j = i + 1;
-            for (; j % 4 != 0; j++) {
-                for (int k = 0; k < 3; k++) rij[k] = ri[k] - r[k][j];
-                rSqd = rij[0] * rij[0] + rij[1] * rij[1] + rij[2] * rij[2];
-                double InvrSqd = 1 / rSqd;
-                double InvrSqd3 = InvrSqd * InvrSqd * InvrSqd;
-                f = lennardJonesForce(InvrSqd,InvrSqd3);
-                for (int k = 0; k < 3; k++){
-                    rij[k] *= f;
-                    ai[k] += rij[k];
-                    updates[k][j] -= rij[k];
-                }
-                totalPot += potentialEnergy(InvrSqd3);
-            }
-            
-
-            for (; j < N; j += 4) {
-                // Difference in each coordinate between particle i and j.
-                for (int k = 0; k < 3; k++){
-                    rijV[k] = riV[k] - Vector(&r[k][j]); // ri[k] - r[k][j]
-                    rijVsqd[k] = rijV[k] * rijV[k]; // rijV[k] * rijV[k]
-                }
-                // Squared of the distance between particle i and j.
-                Vector rSqdV = rijVsqd[0] + rijVsqd[1] +rijVsqd[2]; // rijVsqd[0] + rijVsqd[1] + rijVsqd[2]
-                Vector InvrSqdV = V1 / rSqdV; // 1 / rSqdV
-                Vector InvrSqdV3 = InvrSqdV * InvrSqdV * InvrSqdV; // rSqdV ^ 3
-                // Forces applied to particle i and j.
-                Vector fv = lennardJonesForceVector(InvrSqdV,InvrSqdV3);
-                for (int k = 0; k < 3; k++) {
-                    rijV[k] = rijV[k] * fv; // rijV[k] * fv
-                    aiV[k] = aiV[k] + rijV[k]; // aiV[k] + rijV[k]
-                    (Vector(&updates[k][j]) - rijV[k]).store(&updates[k][j]); // a[k][j] = a[k][j] - rijV[k]
-                }
-                totalPotV = totalPotV + potentialEnergyVector(InvrSqdV3); // Update potential energy.
-            }
-            for (int k = 0; k < 3; k++)
-                updates[k][i] += aiV[k].sum() + ai[k];
+            totalPot = totalPot + loopNonSIMD(i,i + 1,updates);
+            totalPotV = totalPotV + loopSIMD(i,((i + 4)/4)*4,updates);
         }
         #pragma omp simd aligned(updates:32)
         for (int i=0;i<N;i++) {
