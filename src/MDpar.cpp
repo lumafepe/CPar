@@ -377,16 +377,8 @@ double computeAccelerationsAndPotentialVector() {
         #pragma omp for schedule(dynamic) reduction(+:totalPot) reduction(+:totalPotV)
         for (int i = 0; i < N - 1; i++){
 
-            double ri[3],rSqd,f,rij[3],ai[3];
-            Vector riV[3],rijV[3],rijVsqd[3],aiV[3];
-
-            // Store the position of the particle i and set the acceleration to zero.
-            for (int k = 0; k < 3; k++){
-                ri[k] = r[k][i];
-                riV[k] = Vector(r[k][i]);
-                ai[k] = 0.;
-                aiV[k] = Vector();
-            }
+            double ri[3]={r[0][i],r[1][i],r[2][i]},rSqd,f,rij[3],ai[3]={0,0,0};
+            Vector riV[3]={Vector(r[0][i]),Vector(r[1][i]),Vector(r[2][i])},rijV[3],rijVsqd[3],aiV[3]={Vector(),Vector(),Vector()};
 
             int j = i + 1;
             for (; j % 4 != 0; j++) {
@@ -426,8 +418,12 @@ double computeAccelerationsAndPotentialVector() {
             for (int k = 0; k < 3; k++)
                 updates[k][i] += aiV[k].sum() + ai[k];
         }
-        #pragma omp for schedule(dynamic)
-        for (int j=0;j<3;j++) for (int i=0;i<N;i++) a[j][i] += updates[j][i];
+        #pragma omp simd aligned(updates:32)
+        for (int i=0;i<N;i++) {
+            a[0][i] += updates[0][i];
+            a[1][i] += updates[1][i];
+            a[2][i] += updates[2][i];
+        }
     }
     return 2 * epsilon_times_4 * totalPotV.sum()+ totalPot;
 }
