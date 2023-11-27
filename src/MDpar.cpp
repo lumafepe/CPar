@@ -426,11 +426,8 @@ double computeAccelerationsAndPotentialVector() {
             for (int k = 0; k < 3; k++)
                 updates[k][i] += aiV[k].sum() + ai[k];
         }
-        for (int i=0;i<N;i++){
-            a[0][i] += updates[0][i];
-            a[1][i] += updates[1][i];
-            a[2][i] += updates[2][i];
-        }
+        #pragma omp for schedule(dynamic)
+        for (int j=0;j<3;j++) for (int i=0;i<N;i++) a[j][i] += updates[j][i];
     }
     return 2 * epsilon_times_4 * totalPotV.sum()+ totalPot;
 }
