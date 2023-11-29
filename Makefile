@@ -1,49 +1,24 @@
 CC = gcc
-SRC = src
-CFLAGS = -O3 -march=native -ftree-vectorize -mavx -Wall -fno-omit-frame-pointer -lm# -fopt-info-vec-all
+SRC = src/
+CFLAGS =-O3 -march=native -ftree-vectorize -mavx -Wall -fno-omit-frame-pointer -lm
 
 .DEFAULT_GOAL = all
 
 all: MDseq.exe MDpar.exe
 
 MDseq.exe: $(SRC)/MDseq.cpp
-	$(CC) $(CFLAGS) $< -o $@
+	module load gcc/11.2.0;\
+	$(CC) $(CFLAGS) $(SRC)MDseq.cpp -lm -o MDseq.exe
+
 MDpar.exe: $(SRC)/MDpar.cpp
-	$(CC) $(CFLAGS) -fopenmp $< -o $@
+	module load gcc/11.2.0;\
+	$(CC) $(CFLAGS) $(SRC)MDpar.cpp -lm -fopenmp -o MDpar.exe
 
 clean:
 	rm ./MD*.exe
 
-runseq:
+runseq: MDseq.exe
 	./MDseq.exe < inputdata.txt
 
-runpar:
+runpar: MDpar.exe
 	./MDpar.exe < inputdata.txt
-
-# Compiling for performance testing.
-
-PROF_FLAGS = -pg
-profSeq: $(SRC)/MDseq.cpp
-	$(CC) $(CFLAGS) $(PROF_FLAGS) $< -lm -o prof_md
-
-run-profSeq: profSeq
-	./prof_md < inputdata.txt
-
-graph-profSeq: run-profSeq
-	gprof prof_md > main.gprof
-	gprof2dot -o output.dot main.gprof
-	rm gmon.out
-	dot -Tpng -o output.png output.dot
-
-profPar: $(SRC)/MDpar.cpp
-	$(CC) $(CFLAGS) $(PROF_FLAGS) $< -lm -o prof_md
-
-run-profPar: profSeq
-	./prof_md < inputdata.txt
-
-graph-profPar: run-profPar
-	gprof prof_md > main.gprof
-	gprof2dot -o output.dot main.gprof
-	rm gmon.out
-	dot -Tpng -o output.png output.dot
-
