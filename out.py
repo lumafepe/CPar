@@ -8,6 +8,44 @@ from matplotlib import pyplot as plt
 from matplotlib.ticker import LogFormatter
 
 
+def amdhal(pu: int, parallel: float) -> float:
+    return 1 / ((1 - parallel) + (parallel / pu))
+
+
+def plot_amdhal(results: list[float]) -> None:
+
+    results = [9.426, 4.975, 3.399, 2.599, 2.124, 1.799, 1.573, 1.412, 1.277, 1.167, 1.074, 1.005, 0.952, 0.904, 0.865, 0.902, 0.791, 0.757, 0.73, 0.774, 0.723, 0.73, 0.726, 0.724, 0.721, 0.722, 0.727, 0.738, 0.734, 0.751, 0.736, 0.74, 0.745, 0.786, 0.742, 0.751, 0.753, 0.756, 0.759, 0.763]
+    assert len(results) == 40
+
+    speedup = [9.403 / v for v in results]
+    mean = sum(speedup[20:]) / 20
+
+    print("mean speedup: ", mean)
+
+    sequential_time: float = 9.403
+    parallel: float = 98.26 / 100
+
+    theoretical_speedups: list[float] = []
+    for i in range(1, 41):
+        theoretical_speedups.append(amdhal(i, parallel))
+
+    theoretical_speedups: np.ndarray = np.array(theoretical_speedups)
+    practical_speedups: list[float] = [sequential_time / r for r in results]
+    practical_speedups: np.ndarray = np.array(practical_speedups)
+
+    plt.figure(figsize=(8, 6))
+
+    plt.plot(range(1, 41), theoretical_speedups, label='Theoretical Speedup (Amdahl\'s Law)')
+    plt.plot(range(1, 41), practical_speedups, label='Practical Speedup')
+
+    plt.xlabel('Number of Threads')
+    plt.ylabel('Speedup')
+    plt.title('Theoretical vs Practical Speedup Comparison')
+    plt.legend()
+    plt.grid(True)
+    plt.savefig("amdahl.png")
+
+
 def process_log_perf(file_path: str, mode: str) -> list[list[float | int]]:
     def normalize_time(minute_str: str, seconds_str: str) -> float:
         return float(minute_str) * 60 + float(seconds_str)
@@ -61,6 +99,8 @@ def plot_time(result: list[list[float | int]], plot_name: str = "plot.png"):
             if y[i] > outlier_threshold:
                 y[i] = (y[i - 1] + y[i + 1]) / 2.0
 
+    #plot_amdhal(list(y))
+    
     # Create the plot
     plt.figure(figsize=(8, 6))
     plt.scatter(x, y, color='blue', label='Execution Time')
@@ -110,6 +150,8 @@ def main(file_path: str, mode: str) -> None:
 
 
 if __name__ == "__main__":
+
+    plot_amdhal([])
 
     log_file_path = "out.txt"
 

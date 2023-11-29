@@ -5,49 +5,57 @@
 
 #include "md.h"
 
-Vector::Vector(){
+/* Vector class implementation. */
+
+Vector::Vector() {
     value = _mm256_setzero_pd();
 }
-Vector::Vector(double initialValue){
+
+Vector::Vector(double initialValue) {
     value = _mm256_set1_pd(initialValue);
 }
-Vector::Vector(__m256d initialValue){
+
+Vector::Vector(__m256d initialValue) {
     value = initialValue;
 }
+
 Vector::Vector(double a, double b, double c, double d) {
     value = _mm256_set_pd(d,c,b,a);
 }
+
 Vector::Vector(double* array) {
     value = _mm256_load_pd(array);
 }
+
 void Vector::store(double* array) const {
     _mm256_store_pd(array,value);
 }
-// Getter function to retrieve the current value
+
 __m256d Vector::getValue() const {
     return value;
 }
-// Addition operator
+
 Vector Vector::operator+(const Vector& other) const {
     return Vector(_mm256_add_pd(value,other.getValue()));
 }
-// Subtraction operator
+
 Vector Vector::operator-(const Vector& other) const {
     return Vector(_mm256_sub_pd(value,other.getValue()));
 }
-// Multiplication operator
+
 Vector Vector::operator*(const Vector& other) const {
     return Vector(_mm256_mul_pd(value,other.getValue()));
 }
-// Division operator
+
 Vector Vector::operator/(const Vector& other) const {
     return Vector(_mm256_div_pd(value,other.getValue()));
 }
+
 double Vector::sum() const {
     return value[0] + value[1] + value[2] + value[3];
 }
 
-
+/* Simulation global parameters. */
 
 int N = 5000; // Number of particles.
 

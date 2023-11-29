@@ -41,7 +41,7 @@ profPar: $(SRC)/MDpar.cpp
 run-profPar: profSeq
 	./prof_md < inputdata.txt
 
-graph-profPar: run-profSeq
+graph-profPar: run-profPar
 	gprof prof_md > main.gprof
 	gprof2dot -o output.dot main.gprof
 	rm gmon.out

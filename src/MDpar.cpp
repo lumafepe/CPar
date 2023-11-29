@@ -6,50 +6,59 @@
 
 #include "md.h"
 
-Vector::Vector(){
+/* Vector class implementation. */
+
+Vector::Vector() {
     value = _mm256_setzero_pd();
 }
-Vector::Vector(double initialValue){
+
+Vector::Vector(double initialValue) {
     value = _mm256_set1_pd(initialValue);
 }
-Vector::Vector(__m256d initialValue){
+
+Vector::Vector(__m256d initialValue) {
     value = initialValue;
 }
+
 Vector::Vector(double a, double b, double c, double d) {
     value = _mm256_set_pd(d,c,b,a);
 }
+
 Vector::Vector(double* array) {
     value = _mm256_load_pd(array);
 }
+
 void Vector::store(double* array) const {
     _mm256_store_pd(array,value);
 }
-// Getter function to retrieve the current value
+
 __m256d Vector::getValue() const {
     return value;
 }
-// Addition operator
+
 Vector Vector::operator+(const Vector& other) const {
     return Vector(_mm256_add_pd(value,other.getValue()));
 }
-// Subtraction operator
+
 Vector Vector::operator-(const Vector& other) const {
     return Vector(_mm256_sub_pd(value,other.getValue()));
 }
-// Multiplication operator
+
 Vector Vector::operator*(const Vector& other) const {
     return Vector(_mm256_mul_pd(value,other.getValue()));
 }
-// Division operator
+
 Vector Vector::operator/(const Vector& other) const {
     return Vector(_mm256_div_pd(value,other.getValue()));
 }
+
 double Vector::sum() const {
     return value[0] + value[1] + value[2] + value[3];
 }
 
+/* Simulation global parameters. */
 
-int N = 5000; // Number of particles.
+int N = 2160; // Number of particles.
 
 // Lennard-Jones parameters in natural units!
 double sigma = 1.,
@@ -290,13 +299,13 @@ double Kinetic() { //Write Function here!
  */
 void setAccelerationToZero() {
     Vector zero = Vector();
+
     for (int k = 0; k < 3; k++) {
         int i = 0;
         for (; i < N - (N % 4); i += 4) zero.store(&a[k][i]); /* vector acceleration array. */
         for (; i < N; i++) a[k][i] = 0; /* Double acceleration array. */
     }
 }
-
 
 /**
  * Calculate the Lennard-Jones force between particles at a given distance.
@@ -350,50 +359,108 @@ Vector potentialEnergyVector(Vector InvrSqdV3) {
 }
 
 
-inline double loopNonSIMD(int i,int j,double updates[][MAXPART]){
-    double ri[3]={r[0][i],r[1][i],r[2][i]},rSqd,f,rij[3],ai[3]={0,0,0},pot=0;
+/**
+ * Perform non-SIMD operations on vectors for molecular dynamics simulation.
+ *
+ * @param i - Index for particles.
+ * @param j - Starting index for processing elements.
+ * @param updates - 2D array representing updates to particles.
+ *
+ * @return double - The total potential energy calculated during the simulation.
+ */
+inline double loopNonSIMD(int i, int j, double updates[][MAXPART]) {
+
+    double ri[3] = {
+            r[0][i],
+            r[1][i],
+            r[2][i]
+    };
+    double ai[3] = {0,0,0};
+    double rSqd, f, rij[3], pot = 0;
+
     for (; j % 4 != 0; j++) {
-        for (int k = 0; k < 3; k++) rij[k] = ri[k] - r[k][j];
+
+        for (int k = 0; k < 3; k++)
+            rij[k] = ri[k] - r[k][j]; // Calculate relative positions and squared distances
+
         rSqd = rij[0] * rij[0] + rij[1] * rij[1] + rij[2] * rij[2];
+
+        // Calculate inverse squared distance and its cube
         double InvrSqd = 1 / rSqd;
         double InvrSqd3 = InvrSqd * InvrSqd * InvrSqd;
+
         f = lennardJonesForce(InvrSqd,InvrSqd3);
+
+        // Update accelerations and apply updates to the array
         for (int k = 0; k < 3; k++){
             rij[k] = rij[k] * f;
             ai[k] = ai[k] + rij[k];
             updates[k][j] = updates[k][j] - rij[k];
         }
-        pot = pot + potentialEnergy(InvrSqd3);
+        pot = pot + potentialEnergy(InvrSqd3); // Accumulate potential energy
     }
+
     for (int k = 0; k < 3; k++)
-        updates[k][i] += ai[k];
+        updates[k][i] += ai[k]; // Accumulate acceleration contributions into the updates array
+
     return pot;
 }
 
-inline Vector loopSIMD(int i,int j,double updates[][MAXPART]){
-    Vector ri[3]={Vector(r[0][i]),Vector(r[1][i]),Vector(r[2][i])},rSqd,f,rij[3],ai[3]={Vector(),Vector(),Vector()},pot=Vector();
+/**
+ * Perform SIMD operations on vectors for molecular dynamics simulation.
+ *
+ * @param i - Index for particles.
+ * @param j - Starting index for processing elements.
+ * @param updates - 2D array representing updates to particles.
+ *
+ * @return Vector - The total potential energy calculated during the simulation.
+ */
+inline Vector loopSIMD(int i, int j, double updates[][MAXPART]) {
+
+    Vector ri[3] = {
+            Vector(r[0][i]),
+            Vector(r[1][i]),
+            Vector(r[2][i])
+    };
+
+    Vector ai[3] = {
+            Vector(),
+            Vector(),
+            Vector()
+    };
+
+    Vector rSqd, f, rij[3], pot = Vector();
+
     for (; j < N; j += 4) {
-        for (int k = 0; k < 3; k++) rij[k] = ri[k] - Vector(&r[k][j]);
+
+        for (int k = 0; k < 3; k++)
+            rij[k] = ri[k] - Vector(&r[k][j]);
+
         rSqd = rij[0] * rij[0] + rij[1] * rij[1] +rij[2] * rij[2];
+
+        // Calculate inverse squared distance and its cube
         Vector InvrSqd = V1 / rSqd;
         Vector InvrSqd3 = InvrSqd * InvrSqd * InvrSqd;
+
+        // Calculate forces using Lennard-Jones potential
         f = lennardJonesForceVector(InvrSqd,InvrSqd3);
+
+        // Update accelerations and apply updates to the array
         for (int k = 0; k < 3; k++) {
             rij[k] = rij[k] * f;
             ai[k] = ai[k] + rij[k];
             (Vector(&updates[k][j]) - rij[k]).store(&updates[k][j]);
         }
+
+        // Accumulate potential energy contributions
         pot = pot + potentialEnergyVector(InvrSqd3);
     }
+
     for (int k = 0; k < 3; k++)
-        updates[k][i] += ai[k].sum();
+        updates[k][i] += ai[k].sum(); // Accumulate acceleration contributions into the updates array
+
     return pot;
 }
-
-
-
-
-
 
 // Sum vectors in parallel.
 #pragma omp declare reduction(+ : Vector : omp_out = omp_out + omp_in) initializer(omp_priv = Vector())
@@ -410,8 +477,10 @@ inline Vector loopSIMD(int i,int j,double updates[][MAXPART]){
  * @return The total Lennard-Jones potential energy for the system.
  */
 double computeAccelerationsAndPotentialVector() {
+
     Vector totalPotV;
     double totalPot = 0.;
+
     setAccelerationToZero();
     #pragma omp parallel reduction(+:a)
     {

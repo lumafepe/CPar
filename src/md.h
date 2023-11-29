@@ -7,21 +7,88 @@
 
 class Vector {
 private:
-    __m256d value;
+    __m256d value; // Represents a 256-bit vector of four double-precision floating-point numbers.
+
 public:
+
+    /**
+     * Initializes the vector with all elements set to zero.
+     */
     Vector();
+
+    /**
+     * Initializes the vector with a single double value repeated across all elements.
+     * @param initialValue - The initial value for all elements of the vector.
+     */
     Vector(double initialValue);
+
+    /**
+     * Initializes the vector with a given __m256d value.
+     * @param initialValue - The initial __m256d value for the vector.
+     */
     Vector(__m256d initialValue);
+
+    /**
+     * Initializes the vector with four specified double values.
+     * @param a, b, c, d - The four double values to initialize the vector.
+     */
     Vector(double a, double b, double c, double d);
+
+    /**
+     * Initializes the vector by loading values from an array of doubles.
+     * @param array - The array containing double values to load into the vector.
+     */
     Vector(double* array);
+
+    // Methods
+
+    /**
+     * Stores the vector values into a provided double array.
+     * @param array - The array where the vector values will be stored.
+     */
     void store(double* array) const;
+
+    /**
+     * Retrieves the current vector value.
+     * @return __m256d - The current value of the vector.
+     */
     __m256d getValue() const;
+
+    /**
+     * Performs element-wise addition of two vectors.
+     * @param other - The Vector to be added.
+     * @return Vector - The result of the addition operation.
+     */
     Vector operator+(const Vector& other) const;
+
+    /**
+     * Performs element-wise subtraction of two vectors.
+     * @param other - The Vector to be subtracted.
+     * @return Vector - The result of the subtraction operation.
+     */
     Vector operator-(const Vector& other) const;
+
+    /**
+     * Performs element-wise multiplication of two vectors.
+     * @param other - The Vector to be multiplied.
+     * @return Vector - The result of the multiplication operation.
+     */
     Vector operator*(const Vector& other) const;
+
+    /**
+     * Performs element-wise division of two vectors.
+     * @param other - The Vector to be divided.
+     * @return Vector - The result of the division operation.
+     */
     Vector operator/(const Vector& other) const;
+
+    /**
+     * Calculates the sum of all elements in the vector.
+     * @return double - The sum of all vector elements.
+     */
     double sum() const;
 };
+
 
 /**
  * Represents properties of an atom used in a molecular dynamics simulation.
