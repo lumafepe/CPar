@@ -58,7 +58,7 @@ double Vector::sum() const {
 
 /* Simulation global parameters. */
 
-int N = 2160; // Number of particles.
+int N = 5000; // Number of particles.
 
 // Lennard-Jones parameters in natural units!
 double sigma = 1.,
