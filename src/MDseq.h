@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <immintrin.h>
 
-/* Macros namespace for vectorization using AVX compiler intrinsics. */
+/* Class for SIMD operations */
 
 class Vector {
 private:
@@ -212,7 +212,9 @@ void setAccelerationToZero();
  * This function calculates the Lennard-Jones force between particles based on the squared distance
  * between them. It uses the 12-6 Lennard-Jones potential to compute the force.
  *
- * @param rSqd The squared distance between particles.
+ * @param InvrSqd The 1 / distance² between particles. 
+ *
+ * @param InvrSqd3 The 1 / distance⁶ between particles.
  *
  * @return The Lennard-Jones force.
  */
@@ -224,13 +226,15 @@ double lennardJonesForceVector(double rSqd,double InvrSqd3);
  * This function calculates the Lennard-Jones force between particles based on the squared distance
  * between them. It uses the 12-6 Lennard-Jones potential to compute the force.
  *
- * @param rSqd The squared distance between particles.
+ * @param InvrSqdV The 1 / distance² between particles.
+ * 
+ * @param InvrSqd3 The 1 / distance⁶ between particles.
  *
  * @note Uses AVX compiler intrinsics to perform the calculation.
  *
  * @return The Lennard-Jones force.
  */
-Vector lennardJonesForceVector(Vector rSqd,Vector InvrSqd3);
+Vector lennardJonesForceVector(Vector InvrSqdV,Vector InvrSqd3);
 
 /**
  * Calculate the Lennard-Jones potential energy at a given distance.
@@ -238,7 +242,7 @@ Vector lennardJonesForceVector(Vector rSqd,Vector InvrSqd3);
  * This function calculates the Lennard-Jones potential energy between particles based on the squared distance
  * between them. It uses the 12-6 Lennard-Jones potential to compute the potential energy.
  *
- * @param rSqd The squared distance between particles.
+ * @param InvrSqd3 The 1\ distance⁶ between particles.
  *
  * @return The Lennard-Jones potential energy.
  */
@@ -250,26 +254,13 @@ double potentialEnergy(double InvrSqd3);
  * This function calculates the Lennard-Jones potential energy between particles based on the squared distance
  * between them. It uses the 12-6 Lennard-Jones potential to compute the potential energy.
  *
- * @param rSqd The squared distance between particles.
+ * @param InvrSqd3 The 1\ distance⁶ between particles.
  *
  * @note Uses AVX compiler intrinsics to perform the calculation.
  *
  * @return The Lennard-Jones potential energy.
  */
 Vector potentialEnergyVector(Vector InvrSqd3);
-
-/**
- * Sums the elements of a vector and returns the result.
- *
- * This function takes a vector and calculates the sum of its elements.
- * It first copies the elements of the input vector to a temporary array
- * and then iterates through the array to compute the sum.
- *
- * @param vect The input vector to be summed.
- *
- * @return The sum of the elements in the vector.
- */
-double sumVector(Vector vect);
 
 /**
  * Calculates accelerations and the Lennard-Jones potential energy using AVX instructions.

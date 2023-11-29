@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <math.h>
 
-#include "md.h"
+#include "MDseq.h"
 
 /* Vector class implementation. */
 
@@ -311,7 +311,9 @@ void setAccelerationToZero() {
  * This function calculates the Lennard-Jones force between particles based on the squared distance
  * between them. It uses the 12-6 Lennard-Jones potential to compute the force.
  *
- * @param rSqd The squared distance between particles.
+ * @param InvrSqd The 1 \ distance² between particles.
+ * 
+ * @param InvrSqd3 The 1 \ distance⁶ between particles.
  *
  * @return The Lennard-Jones force.
  */
@@ -335,7 +337,7 @@ Vector lennardJonesForceVector(Vector InvrSqdV,Vector InvrSqdV3) {
  * This function calculates the Lennard-Jones potential energy between particles based on the squared distance
  * between them. It uses the 12-6 Lennard-Jones potential to compute the potential energy.
  *
- * @param rSqd The squared distance between particles.
+ * @param InvrSqd3 The 1/ distance⁶ between particles.
  *
  * @return The Lennard-Jones potential energy.
  */
@@ -355,6 +357,7 @@ Vector potentialEnergyVector(Vector InvrSqdV3) {
 
     return term1 - term2; // term1 - term2
 }
+
 
 
 /**

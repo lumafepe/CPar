@@ -4,7 +4,7 @@
 #include <math.h>
 #include <omp.h>
 
-#include "md.h"
+#include "MDpar.h"
 
 /* Vector class implementation. */
 
@@ -80,7 +80,6 @@ double m = 1.,
 double L, // Size of the box, which will be specified in natural units.
        Tinit; // Initial Temperature in Natural Units.
 
-const int MAXPART = 5004; // Maximum array size.
 
 double r[3][MAXPART] __attribute__((aligned(32))), // Position array.
        v[3][MAXPART] __attribute__((aligned(32))), // Velocity array.
@@ -185,7 +184,7 @@ int main()
 
         fprintf(
             ofp,
-            "  %.11e  %.11e  %.11e %.11e  %.11e  %.11e \n",
+            "  %8.4e  %20.8f  %20.8f %20.8f  %20.8f  %20.8f \n",
             (i * dt * timefac), Temp, Press, KE, PE, KE + PE
         ); // Write values to output file.
     }
@@ -202,7 +201,7 @@ int main()
     fprintf(afp,"%s", fileHeaders[2]);
     fprintf(
         afp,
-        "  %.11e  %.11e       %.11e     %.11e       %.11e        %.11e         %i\n",
+        "  %8.4e  %15.5f       %15.5f     %10.5f       %10.5f        %10.5e         %i\n",
         i * dt * timefac, Tavg, Pavg, gc, Z, Vol * VolFac, N
     );
 
@@ -313,7 +312,9 @@ void setAccelerationToZero() {
  * This function calculates the Lennard-Jones force between particles based on the squared distance
  * between them. It uses the 12-6 Lennard-Jones potential to compute the force.
  *
- * @param rSqd The squared distance between particles.
+ * @param InvrSqd The 1 \ distance² between particles.
+ * 
+ * @param InvrSqd3 The 1 \ distance⁶ between particles.
  *
  * @return The Lennard-Jones force.
  */
@@ -337,7 +338,7 @@ Vector lennardJonesForceVector(Vector InvrSqdV,Vector InvrSqdV3) {
  * This function calculates the Lennard-Jones potential energy between particles based on the squared distance
  * between them. It uses the 12-6 Lennard-Jones potential to compute the potential energy.
  *
- * @param rSqd The squared distance between particles.
+ * @param InvrSqd3 The 1/ distance⁶ between particles.
  *
  * @return The Lennard-Jones potential energy.
  */
@@ -497,7 +498,7 @@ double computeAccelerationsAndPotentialVector() {
             a[2][i] += updates[2][i];
         }
     }
-    return 2 * epsilon_times_4 * totalPotV.sum()+ totalPot;
+    return 2 * epsilon_times_4 * (totalPotV.sum()+ totalPot);
 }
 
 /**
