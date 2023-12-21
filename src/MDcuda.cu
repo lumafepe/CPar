@@ -348,7 +348,7 @@ __device__ double cudaPotentialEnergy(double sigma_over_6,double InvdSqd3) {
 
 
 __global__ void cudaComputeAccelerationsAndPotentialVector(double* d_r, double* d_a, int N, double epsilon_times_4, double sigma_over_6, double* d_pot) {
-    double updates[3][MAXPART]={0}, pot=0;
+    double pot=0;
 
     int i = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -374,16 +374,14 @@ __global__ void cudaComputeAccelerationsAndPotentialVector(double* d_r, double* 
             for (int k = 0; k < 3; k++) {
                 rij[k] = rij[k] * f;
                 ai[k]+=rij[k];
-                updates[k][j] -= rij[k];
+                cudaAtomicAdd(&d_a[k * MAXPART + j],-rij[k]);
             }
             pot += cudaPotentialEnergy(sigma_over_6, InvdSqd3); // Accumulate potential energy
         }
 
         // Update accelerations in global memory
         for (int k = 0; k < 3; k++) {
-            updates[k][i]+=ai[k];
-            for (int l=i;l<N;l++)
-                cudaAtomicAdd(&d_a[k * MAXPART + l], updates[k][l]);
+            cudaAtomicAdd(&d_a[k * MAXPART + i],ai[k]);
         }
         cudaAtomicAdd(d_pot,pot);
     }
