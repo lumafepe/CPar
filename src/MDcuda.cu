@@ -116,6 +116,10 @@ int main()
     // mass, and this will allow us to update their positions via Newton's law.
     computeAccelerations();
 
+    cudaMemcpy(d_v, v, 3 * MAXPART * sizeof(double), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_a, a, 3 * MAXPART * sizeof(double), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_r, r, 3 * MAXPART * sizeof(double), cudaMemcpyHostToDevice);
+
     fprintf(ofp, "%s", fileHeaders[0]);
     printf("\n\nProgress: [");
 
@@ -133,7 +137,6 @@ int main()
             }
         }
         fflush(stdout);
-
         Press = VelocityVerletAndPotential(dt, &PE); // Update positions and velocities according to Newton's Law.
         Press *= PressFac; // Compute the pressure as the sum of momentum changes from wall collisions / time-step,
 
@@ -218,6 +221,19 @@ void initialize() {
 }   
 
 
+__global__ void calculateSquareVelocity(double* v, int N, double* result) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (i < N) {
+        double localSum = 0.0;
+        for (int j = 0; j < 3; j++) {
+            localSum += v[j * MAXPART + i] * v[j * MAXPART + i];
+        }
+        cudaAtomicAdd(result, localSum);
+    }
+}
+
+
 /**
  * Calculate the mean squared velocity of particles in the system.
  *
@@ -226,15 +242,36 @@ void initialize() {
  *
  * @return The mean squared velocity of particles.
  */
-double MeanSquaredVelocity() { 
+double MeanSquaredVelocity() {
 
-    double s = 0.;
-    for (int j = 0; j < 3;j++)
-        for (int i = 0; i < N; i++)   
-            s += v[j][i] * v[j][i];
+    double result;
 
-    return s / N;
+    // Allocate and copy result to device
+    double *d_result;
+    cudaMalloc(&d_result, sizeof(double));
+    cudaMemset(d_result,0, sizeof(double));
+
+    dim3 threadsPerBlock(256);
+    dim3 blocksPerGrid((N + threadsPerBlock.x - 1) / threadsPerBlock.x);
+    calculateSquareVelocity<<<threadsPerBlock,blocksPerGrid>>>(d_v,N,d_result);
+    
+    cudaMemcpy(&result, d_result, sizeof(double), cudaMemcpyDeviceToHost);
+
+    return result / N;
 }
+
+__global__ void calculateKinetic(double* v, int N, double m, double* result) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (i < N) {
+        double v2 = 0.0;
+        for (int j = 0; j < 3; j++) {
+            v2 += v[j * MAXPART + i] * v[j * MAXPART + i];
+        }
+        cudaAtomicAdd(result, 0.5 * m * v2);
+    }
+}
+
 
 /**
  * Calculate the kinetic energy of the system.
@@ -243,17 +280,21 @@ double MeanSquaredVelocity() {
  *
  * @return The total kinetic energy of the system.
  */
-double Kinetic() { //Write Function here!  
-    
-    double v2, kin = 0.;
+double Kinetic() { //Write Function here!
 
-    for (int i = 0; i < N; i++) {
-        v2 = 0.;
-        for (int j=0; j<3; j++) v2 += v[j][i]*v[j][i];
-        kin += 0.5 * m * v2;
-    }
+    double result,*d_result;
+    cudaMalloc(&d_result, sizeof(double));
+    cudaMemset(d_result,0,sizeof(double));
     
-    return kin;
+    dim3 threadsPerBlock(256);
+    dim3 blocksPerGrid((N + threadsPerBlock.x - 1) / threadsPerBlock.x);
+
+    calculateKinetic<<<threadsPerBlock, blocksPerGrid>>>(d_v, N, m, d_result);
+
+    cudaMemcpy(&result, d_result, sizeof(double), cudaMemcpyDeviceToHost);
+    cudaFree(d_result);
+
+    return result;
 }
 
 
@@ -307,7 +348,7 @@ __device__ double cudaPotentialEnergy(double sigma_over_6,double InvdSqd3) {
 
 
 __global__ void cudaComputeAccelerationsAndPotentialVector(double* d_r, double* d_a, int N, double epsilon_times_4, double sigma_over_6, double* d_pot) {
-    double updates[3][MAXPART]={0};
+    double updates[3][MAXPART]={0}, pot=0;
 
     int i = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -317,7 +358,7 @@ __global__ void cudaComputeAccelerationsAndPotentialVector(double* d_r, double* 
             d_r[1 * MAXPART + i],
             d_r[2 * MAXPART + i]
         };
-        double rij[3];
+        double rij[3],ai[3]={0};
 
         for (int j = i + 1; j < N; j++) {
             for (int k = 0; k < 3; k++)
@@ -332,46 +373,37 @@ __global__ void cudaComputeAccelerationsAndPotentialVector(double* d_r, double* 
 
             for (int k = 0; k < 3; k++) {
                 rij[k] = rij[k] * f;
-                updates[k][i] += rij[k];
+                ai[k]+=rij[k];
                 updates[k][j] -= rij[k];
             }
-            d_pot[i] += cudaPotentialEnergy(sigma_over_6, InvdSqd3); // Accumulate potential energy
+            pot += cudaPotentialEnergy(sigma_over_6, InvdSqd3); // Accumulate potential energy
         }
 
         // Update accelerations in global memory
-        for (int k = 0; k < 3; k++) 
-            for (int l=0;l<N;l++)
+        for (int k = 0; k < 3; k++) {
+            updates[k][i]+=ai[k];
+            for (int l=i;l<N;l++)
                 cudaAtomicAdd(&d_a[k * MAXPART + l], updates[k][l]);
+        }
+        cudaAtomicAdd(d_pot,pot);
     }
 }
 
 
 double computeAccelerationsAndPotentialVector() {
-    double totalPotr[MAXPART], totalPot = 0;
+    double totalPot;
     double *d_pot;
     cudaMalloc(&d_pot, sizeof(double) * MAXPART);
 
-    cudaMemcpy(d_r, r, sizeof(double) * 3 * MAXPART, cudaMemcpyHostToDevice);
     cudaMemset(d_a, 0, sizeof(double) * 3 * MAXPART);
-    cudaMemset(d_pot, 0, sizeof(double) * MAXPART);
+    cudaMemset(d_pot, 0, sizeof(double));
 
-    dim3 threadsPerBlock(256);
+    dim3 threadsPerBlock(64);
     dim3 blocksPerGrid((N + threadsPerBlock.x - 1) / threadsPerBlock.x);
 
     cudaComputeAccelerationsAndPotentialVector<<<blocksPerGrid, threadsPerBlock>>>(d_r, d_a, N, epsilon_times_4, sigma_over_6, d_pot);
-    cudaDeviceSynchronize();
 
-    cudaError_t cudaError = cudaGetLastError();
-    if (cudaError != cudaSuccess) {
-        printf("CUDA error: %s\n", cudaGetErrorString(cudaError));
-        // Handle or investigate the error
-    }
-
-    cudaMemcpy(totalPotr, d_pot, sizeof(double) * MAXPART, cudaMemcpyDeviceToHost);
-    cudaMemcpy(a, d_a, sizeof(double) * MAXPART * 3, cudaMemcpyDeviceToHost);
-
-    for (int i = 0; i < N; i++)
-        totalPot += totalPotr[i];
+    cudaMemcpy(&totalPot, d_pot, sizeof(double), cudaMemcpyDeviceToHost);
 
     cudaFree(d_pot);
 
@@ -429,8 +461,23 @@ __global__ void updateMotion(double* r, double* v, double* a, int N, double dt) 
 
     if (i < N) {
         for (int j = 0; j < 3; j++) {
-            r[j * N + i] += v[j * N + i] * dt + 0.5 * a[j * N + i] * dt * dt;
-            v[j * N + i] += 0.5 * a[j * N + i] * dt;
+            r[j * MAXPART + i] += v[j * MAXPART + i] * dt + 0.5 * a[j * MAXPART + i] * dt * dt;
+            v[j * MAXPART + i] += 0.5 * a[j * MAXPART + i] * dt;
+        }
+    }
+}
+__global__ void updateVelocities(double* r, double* v, double* a, double L, double dt, double m, int N, double* psum) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (i < N) {
+        for (int j = 0; j < 3; j++) {
+            v[j * MAXPART + i] += 0.5 * a[j * MAXPART + i] * dt;
+
+            // Elastic walls.
+            if (r[j * MAXPART + i] < 0. || r[j * MAXPART + i] >= L) {
+                v[j * MAXPART + i] *= -1.0; // Elastic walls.
+                cudaAtomicAdd(psum, 2 * m * fabs(v[j * MAXPART + i]) / dt);  // Contribution to pressure from "left" walls.
+            }
         }
     }
 }
@@ -449,42 +496,42 @@ __global__ void updateMotion(double* r, double* v, double* a, int N, double dt) 
  * @return The pressure contribution from elastic collisions with walls.
  */
 double VelocityVerletAndPotential(double dt, double *potentialEnergy) {
-
-    double psum = 0.;
-
     /*
     Compute accelerations from forces at current position 
     This call was removed (commented) for pedagogical reasons computeAccelerations();
     Update positions and velocity with current velocity and acceleration.
     */
 
-    for (int j = 0; j < 3; j++) {
-        for (int i=0; i < N; i++) {
-            r[j][i] += v[j][i] * dt + 0.5 * a[j][i] * dt * dt;
-            v[j][i] += 0.5 * a[j][i] * dt;
-        }
+    dim3 threadsPerBlock(256);
+    dim3 blocksPerGrid((N + threadsPerBlock.x - 1) / threadsPerBlock.x);
 
-    }
+    updateMotion<<<blocksPerGrid, threadsPerBlock>>>(d_r, d_v, d_a, N, dt);
+
 
     // Update accelerations from updated positions.
     *potentialEnergy = computeAccelerationsAndPotentialVector();
 
+
+    double psum = 0.,*d_psum;
+    cudaMalloc(&d_psum,sizeof(double));
+    cudaMemset(d_psum,0,sizeof(double));
+
     // Update velocity with updated acceleration.
     for (int j = 0; j < 3; j++) {
-
-        for (int i = 0; i < N; i++){
-            v[j][i] += 0.5 * a[j][i] * dt;
-        }
-        
-        // Elastic walls.
         for (int i = 0; i < N; i++) {
+            v[j][i] += 0.5 * a[j][i] * dt;
             if (r[j][i] < 0.|| r[j][i] >= L) {
                 v[j][i] *= -1.; // Elastic walls.
                 psum += 2 * m * fabs(v[j][i]) / dt;  // Contribution to pressure from "left" walls.
             }
         }
     }
-    
+
+    updateVelocities<<<blocksPerGrid, threadsPerBlock>>>(d_r, d_v, d_a,L,dt,m, N, d_psum);
+
+    cudaMemcpy(&psum, d_psum, sizeof(double), cudaMemcpyDeviceToHost);
+    cudaFree(d_psum);
+ 
     return psum / (6 * L * L);
 }
 

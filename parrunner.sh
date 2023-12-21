@@ -1,5 +1,6 @@
 #!/bin/bash
-module load gcc/11.2.0
+#SBATCH --partition=cpar
+#SBATCH --cpus-per-task=40
 make clean
 make
 for i in {1..40}

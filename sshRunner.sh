@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Set username and password as variables.
-username=""
-password=""
+username="pg54009"
+password="ld4Ow5Cq"
 
 # Set the destination folder on the remote server.
 destination_folder="auto"
@@ -16,13 +16,13 @@ fi
 
 # Set the number of CPUs based on the first argument
 if [ "$1" == "par" ]; then
-    cpus=40
     runner="parrunner.sh"
 elif [ "$1" == "seq" ]; then
-    cpus=1
     runner="seqrunner.sh"
+elif [ "$1" == "cuda" ]; then
+    runner="cudarunner.sh"
 else
-    echo "Invalid argument. Use 'par' or 'seq'."
+    echo "Invalid argument. Use 'par' or 'cuda' or 'seq'."
     exit 1
 fi
 
@@ -36,7 +36,7 @@ rsync -avz -e "sshpass -p '$password' ssh" ./ "$username"@s7edu.di.uminho.pt:~/$
 sshpass -p "$password" ssh "$username"@s7edu.di.uminho.pt << EOF
 cd ~/$destination_folder/
 
-sbatch --partition=cpar --cpus-per-task=$cpus -W $runner
+sbatch -W $runner
 for file in slurm-*; do
     if [[ -f "\$file" ]]; then
         echo "Processing file: \$file"
