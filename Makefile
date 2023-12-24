@@ -1,7 +1,7 @@
 CC = gcc
 NVCC = nvcc
 SRC = src/
-NFLAGS = -O3 -lm -arch=sm_61
+NFLAGS = -O3 -lm -arch=sm_35
 CFLAGS =-O3 -march=native -ftree-vectorize -mavx -Wall -fno-omit-frame-pointer -lm
 
 .DEFAULT_GOAL = all

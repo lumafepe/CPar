@@ -30,7 +30,7 @@ double L, // Size of the box, which will be specified in natural units.
 double r[3][MAXPART], // Position array.
        v[3][MAXPART], // Velocity array.
        a[3][MAXPART]; // Acceleration array.
-double *d_r,*d_v,*d_a;
+double *d_r,*d_v,*d_a,*d_result;
 
 const char* fileHeaders[] = {
     "  time (s)              T(t) (K)              P(t) (Pa)           Kinetic En. (n.u.)     Potential En. (n.u.) Total En. (n.u.)\n",
@@ -68,6 +68,7 @@ int main()
     cudaMalloc(&d_a,sizeof(double)*MAXPART*3);
     cudaMalloc(&d_r,sizeof(double)*MAXPART*3);
     cudaMalloc(&d_v,sizeof(double)*MAXPART*3);
+    cudaMalloc(&d_result,sizeof(double));
 
     double Pavg = 0.,
            Tavg = 0.;
@@ -179,6 +180,7 @@ int main()
     cudaFree(d_r);
     cudaFree(d_a);
     cudaFree(d_v);
+    cudaFree(d_result);
 
     return 0;
 }
@@ -222,15 +224,25 @@ void initialize() {
 
 
 __global__ void calculateSquareVelocity(double* v, int N, double* result) {
+    __shared__ double tempResult;
     int i = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (threadIdx.x==0)
+        tempResult=0;
+    __syncthreads();
 
     if (i < N) {
         double localSum = 0.0;
         for (int j = 0; j < 3; j++) {
             localSum += v[j * MAXPART + i] * v[j * MAXPART + i];
         }
-        cudaAtomicAdd(result, localSum);
+        cudaAtomicAdd(&tempResult, localSum);
     }
+
+    __syncthreads();
+
+    if (threadIdx.x==0)
+        cudaAtomicAdd(result, tempResult);
 }
 
 
@@ -247,8 +259,6 @@ double MeanSquaredVelocity() {
     double result;
 
     // Allocate and copy result to device
-    double *d_result;
-    cudaMalloc(&d_result, sizeof(double));
     cudaMemset(d_result,0, sizeof(double));
 
     dim3 threadsPerBlock(256);
@@ -261,15 +271,25 @@ double MeanSquaredVelocity() {
 }
 
 __global__ void calculateKinetic(double* v, int N, double m, double* result) {
+    __shared__ double tempResult;
     int i = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (threadIdx.x==0)
+        tempResult=0;
+    __syncthreads();
 
     if (i < N) {
         double v2 = 0.0;
         for (int j = 0; j < 3; j++) {
             v2 += v[j * MAXPART + i] * v[j * MAXPART + i];
         }
-        cudaAtomicAdd(result, 0.5 * m * v2);
+        cudaAtomicAdd(&tempResult, v2);
     }
+
+    __syncthreads();
+    if (threadIdx.x==0)
+        cudaAtomicAdd(result, 0.5 * m * tempResult);
+    
 }
 
 
@@ -282,8 +302,7 @@ __global__ void calculateKinetic(double* v, int N, double m, double* result) {
  */
 double Kinetic() { //Write Function here!
 
-    double result,*d_result;
-    cudaMalloc(&d_result, sizeof(double));
+    double result;
     cudaMemset(d_result,0,sizeof(double));
     
     dim3 threadsPerBlock(256);
@@ -292,7 +311,6 @@ double Kinetic() { //Write Function here!
     calculateKinetic<<<threadsPerBlock, blocksPerGrid>>>(d_v, N, m, d_result);
 
     cudaMemcpy(&result, d_result, sizeof(double), cudaMemcpyDeviceToHost);
-    cudaFree(d_result);
 
     return result;
 }
@@ -390,20 +408,16 @@ __global__ void cudaComputeAccelerationsAndPotentialVector(double* d_r, double* 
 
 double computeAccelerationsAndPotentialVector() {
     double totalPot;
-    double *d_pot;
-    cudaMalloc(&d_pot, sizeof(double) * MAXPART);
 
     cudaMemset(d_a, 0, sizeof(double) * 3 * MAXPART);
-    cudaMemset(d_pot, 0, sizeof(double));
+    cudaMemset(d_result, 0, sizeof(double));
 
     dim3 threadsPerBlock(64);
     dim3 blocksPerGrid((N + threadsPerBlock.x - 1) / threadsPerBlock.x);
 
-    cudaComputeAccelerationsAndPotentialVector<<<blocksPerGrid, threadsPerBlock>>>(d_r, d_a, N, epsilon_times_4, sigma_over_6, d_pot);
+    cudaComputeAccelerationsAndPotentialVector<<<blocksPerGrid, threadsPerBlock>>>(d_r, d_a, N, epsilon_times_4, sigma_over_6, d_result);
 
-    cudaMemcpy(&totalPot, d_pot, sizeof(double), cudaMemcpyDeviceToHost);
-
-    cudaFree(d_pot);
+    cudaMemcpy(&totalPot, d_result, sizeof(double), cudaMemcpyDeviceToHost);
 
     return 2 * epsilon_times_4 * totalPot;
 }
@@ -510,9 +524,8 @@ double VelocityVerletAndPotential(double dt, double *potentialEnergy) {
     *potentialEnergy = computeAccelerationsAndPotentialVector();
 
 
-    double psum = 0.,*d_psum;
-    cudaMalloc(&d_psum,sizeof(double));
-    cudaMemset(d_psum,0,sizeof(double));
+    double psum = 0.;
+    cudaMemset(d_result,0,sizeof(double));
 
     // Update velocity with updated acceleration.
     for (int j = 0; j < 3; j++) {
@@ -525,10 +538,9 @@ double VelocityVerletAndPotential(double dt, double *potentialEnergy) {
         }
     }
 
-    updateVelocities<<<blocksPerGrid, threadsPerBlock>>>(d_r, d_v, d_a,L,dt,m, N, d_psum);
+    updateVelocities<<<blocksPerGrid, threadsPerBlock>>>(d_r, d_v, d_a,L,dt,m, N, d_result);
 
-    cudaMemcpy(&psum, d_psum, sizeof(double), cudaMemcpyDeviceToHost);
-    cudaFree(d_psum);
+    cudaMemcpy(&psum, d_result, sizeof(double), cudaMemcpyDeviceToHost);
  
     return psum / (6 * L * L);
 }
