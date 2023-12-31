@@ -30,7 +30,7 @@ double L, // Size of the box, which will be specified in natural units.
 double r[3][MAXPART], // Position array.
        v[3][MAXPART], // Velocity array.
        a[3][MAXPART]; // Acceleration array.
-double *d_r,*d_v,*d_a,*d_result;
+double *d_r,*d_v,*d_a,*d_result,*d_reduction;
 
 const char* fileHeaders[] = {
     "  time (s)              T(t) (K)              P(t) (Pa)           Kinetic En. (n.u.)     Potential En. (n.u.) Total En. (n.u.)\n",
@@ -366,11 +366,15 @@ __device__ double cudaPotentialEnergy(double sigma_over_6,double InvdSqd3) {
 
 
 __global__ void cudaComputeAccelerationsAndPotentialVector(double* d_r, double* d_a, int N, double epsilon_times_4, double sigma_over_6, double* d_pot) {
-    double pot=0;
+    extern __shared__ double pot[];
+
+    pot[threadIdx.x]=0;
+
+    __syncthreads();
 
     int i = blockIdx.x * blockDim.x + threadIdx.x;
 
-    if (i < N - 1) {
+    if (i < N) {
         double ri[3] = {
             d_r[0 * MAXPART + i],
             d_r[1 * MAXPART + i],
@@ -378,7 +382,8 @@ __global__ void cudaComputeAccelerationsAndPotentialVector(double* d_r, double* 
         };
         double rij[3],ai[3]={0};
 
-        for (int j = i + 1; j < N; j++) {
+        for (int j = 0; j < N; j++) {
+            if (j==i) continue;
             for (int k = 0; k < 3; k++)
                 rij[k] = ri[k] - d_r[k * MAXPART + j];
 
@@ -389,37 +394,52 @@ __global__ void cudaComputeAccelerationsAndPotentialVector(double* d_r, double* 
 
             double f = cudaLennardJonesForce(InvdSqd, InvdSqd3);
 
-            for (int k = 0; k < 3; k++) {
-                rij[k] = rij[k] * f;
-                ai[k]+=rij[k];
-                cudaAtomicAdd(&d_a[k * MAXPART + j],-rij[k]);
-            }
-            pot += cudaPotentialEnergy(sigma_over_6, InvdSqd3); // Accumulate potential energy
+            for (int k = 0; k < 3; k++) 
+                ai[k]+=rij[k] * f;
+            if (j>i)
+                pot[threadIdx.x] += cudaPotentialEnergy(sigma_over_6, InvdSqd3); // Accumulate potential energy
         }
 
         // Update accelerations in global memory
         for (int k = 0; k < 3; k++) {
-            cudaAtomicAdd(&d_a[k * MAXPART + i],ai[k]);
+            d_a[k * MAXPART + i] = ai[k];
         }
-        cudaAtomicAdd(d_pot,pot);
     }
+    __syncthreads();
+    for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+        if (threadIdx.x < stride) {
+            pot[threadIdx.x] += pot[threadIdx.x + stride];
+        }
+        __syncthreads();
+    }
+
+    // Store the sum in d_pot
+    if (threadIdx.x == 0) {
+        d_pot[blockIdx.x] = pot[0];
+    }
+
 }
 
 
 double computeAccelerationsAndPotentialVector() {
-    double totalPot;
-
     cudaMemset(d_a, 0, sizeof(double) * 3 * MAXPART);
-    cudaMemset(d_result, 0, sizeof(double));
+    
 
     dim3 threadsPerBlock(64);
-    dim3 blocksPerGrid((N + threadsPerBlock.x - 1) / threadsPerBlock.x);
+    dim3 blocksPerGrid((N + threadsPerBlock.x) / threadsPerBlock.x);
 
-    cudaComputeAccelerationsAndPotentialVector<<<blocksPerGrid, threadsPerBlock>>>(d_r, d_a, N, epsilon_times_4, sigma_over_6, d_result);
+    cudaMalloc(&d_reduction,sizeof(double)*blocksPerGrid.x);
+    double totalPot[blocksPerGrid.x];
 
-    cudaMemcpy(&totalPot, d_result, sizeof(double), cudaMemcpyDeviceToHost);
+    cudaComputeAccelerationsAndPotentialVector<<<blocksPerGrid, threadsPerBlock,threadsPerBlock.x*sizeof(double)>>>(d_r, d_a, N, epsilon_times_4, sigma_over_6, d_reduction);
 
-    return 2 * epsilon_times_4 * totalPot;
+    cudaMemcpy(&totalPot, d_reduction, sizeof(double)*blocksPerGrid.x, cudaMemcpyDeviceToHost);
+
+    cudaFree(d_reduction);
+    for (int i=1;i<blocksPerGrid.x;i++)
+        totalPot[0]+=totalPot[i];
+
+    return 2 * epsilon_times_4 * totalPot[0];
 }
 
 /**
