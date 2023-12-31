@@ -38,20 +38,6 @@ const char* fileHeaders[] = {
     " --------------   -----------        ---------------   --------------   ---------------   ------------   -----------\n"
 }; // Output file table headers.
 
-
-__device__ double cudaAtomicAdd(double* address, double val) {
-    unsigned long long int* address_as_ull = (unsigned long long int*)address;
-    unsigned long long int old = *address_as_ull, assumed;
-
-    do {
-        assumed = old;
-        old = atomicCAS(address_as_ull, assumed, __double_as_longlong(val + __longlong_as_double(assumed)));
-    } while (assumed != old);
-
-    return __longlong_as_double(old);
-}
-
-
 /**
  * Molecular Dynamics simulation of a gas system.
  *
@@ -224,25 +210,29 @@ void initialize() {
 
 
 __global__ void calculateSquareVelocity(double* v, int N, double* result) {
-    __shared__ double tempResult;
+    extern __shared__ double tempResult[];
     int i = blockIdx.x * blockDim.x + threadIdx.x;
 
-    if (threadIdx.x==0)
-        tempResult=0;
-    __syncthreads();
+    tempResult[threadIdx.x]=0;
 
     if (i < N) {
-        double localSum = 0.0;
         for (int j = 0; j < 3; j++) {
-            localSum += v[j * MAXPART + i] * v[j * MAXPART + i];
+            tempResult[threadIdx.x] += v[j * MAXPART + i] * v[j * MAXPART + i];
         }
-        cudaAtomicAdd(&tempResult, localSum);
     }
 
     __syncthreads();
+    for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+        if (threadIdx.x < stride) {
+            tempResult[threadIdx.x] += tempResult[threadIdx.x + stride];
+        }
+        __syncthreads();
+    }
 
-    if (threadIdx.x==0)
-        cudaAtomicAdd(result, tempResult);
+    // Store the sum in d_pot
+    if (threadIdx.x == 0) {
+        result[blockIdx.x] = tempResult[0];
+    }
 }
 
 
@@ -256,39 +246,45 @@ __global__ void calculateSquareVelocity(double* v, int N, double* result) {
  */
 double MeanSquaredVelocity() {
 
-    double result;
-
-    // Allocate and copy result to device
-    cudaMemset(d_result,0, sizeof(double));
-
     dim3 threadsPerBlock(256);
     dim3 blocksPerGrid((N + threadsPerBlock.x - 1) / threadsPerBlock.x);
-    calculateSquareVelocity<<<threadsPerBlock,blocksPerGrid>>>(d_v,N,d_result);
-    
-    cudaMemcpy(&result, d_result, sizeof(double), cudaMemcpyDeviceToHost);
 
-    return result / N;
+    cudaMalloc(&d_reduction,sizeof(double)*blocksPerGrid.x);
+    double result[blocksPerGrid.x];
+
+    calculateSquareVelocity<<<blocksPerGrid, threadsPerBlock,threadsPerBlock.x*sizeof(double)>>>(d_v,N,d_reduction);
+    
+    cudaMemcpy(&result, d_reduction, sizeof(double)*blocksPerGrid.x, cudaMemcpyDeviceToHost);
+
+    cudaFree(d_reduction);
+    for (int i=1;i<blocksPerGrid.x;i++)
+        result[0]+=result[i];
+    return result[0] / N;
 }
 
 __global__ void calculateKinetic(double* v, int N, double m, double* result) {
-    __shared__ double tempResult;
+    extern __shared__ double tempResult[];
     int i = blockIdx.x * blockDim.x + threadIdx.x;
 
-    if (threadIdx.x==0)
-        tempResult=0;
-    __syncthreads();
+    tempResult[threadIdx.x]=0;
 
-    if (i < N) {
-        double v2 = 0.0;
-        for (int j = 0; j < 3; j++) {
-            v2 += v[j * MAXPART + i] * v[j * MAXPART + i];
+    if (i < N) 
+        for (int j = 0; j < 3; j++)
+            tempResult[threadIdx.x] += v[j * MAXPART + i] * v[j * MAXPART + i];
+
+
+    __syncthreads();
+    for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+        if (threadIdx.x < stride) {
+            tempResult[threadIdx.x] += tempResult[threadIdx.x + stride];
         }
-        cudaAtomicAdd(&tempResult, v2);
+        __syncthreads();
     }
 
-    __syncthreads();
-    if (threadIdx.x==0)
-        cudaAtomicAdd(result, 0.5 * m * tempResult);
+    // Store the sum in d_pot
+    if (threadIdx.x == 0) {
+        result[blockIdx.x] = tempResult[0];
+    }
     
 }
 
@@ -301,18 +297,21 @@ __global__ void calculateKinetic(double* v, int N, double m, double* result) {
  * @return The total kinetic energy of the system.
  */
 double Kinetic() { //Write Function here!
-
-    double result;
-    cudaMemset(d_result,0,sizeof(double));
-    
     dim3 threadsPerBlock(256);
     dim3 blocksPerGrid((N + threadsPerBlock.x - 1) / threadsPerBlock.x);
 
-    calculateKinetic<<<threadsPerBlock, blocksPerGrid>>>(d_v, N, m, d_result);
+    cudaMalloc(&d_reduction,sizeof(double)*blocksPerGrid.x);
+    double result[blocksPerGrid.x];
 
-    cudaMemcpy(&result, d_result, sizeof(double), cudaMemcpyDeviceToHost);
+    calculateKinetic<<<blocksPerGrid, threadsPerBlock,threadsPerBlock.x*sizeof(double)>>>(d_v, N, m, d_reduction);
 
-    return result;
+    cudaMemcpy(result, d_reduction, sizeof(double), cudaMemcpyDeviceToHost);
+
+    cudaFree(d_reduction);
+    for (int i=1;i<blocksPerGrid.x;i++)
+        result[0]+=result[i];
+
+    return result[0];
 }
 
 
@@ -405,6 +404,7 @@ __global__ void cudaComputeAccelerationsAndPotentialVector(double* d_r, double* 
             d_a[k * MAXPART + i] = ai[k];
         }
     }
+    //reduction
     __syncthreads();
     for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
         if (threadIdx.x < stride) {
@@ -499,8 +499,9 @@ __global__ void updateMotion(double* r, double* v, double* a, int N, double dt) 
     }
 }
 __global__ void updateVelocities(double* r, double* v, double* a, double L, double dt, double m, int N, double* psum) {
+    extern __shared__ double tempResult[];
     int i = blockIdx.x * blockDim.x + threadIdx.x;
-
+    tempResult[threadIdx.x]=0;
     if (i < N) {
         for (int j = 0; j < 3; j++) {
             v[j * MAXPART + i] += 0.5 * a[j * MAXPART + i] * dt;
@@ -508,9 +509,22 @@ __global__ void updateVelocities(double* r, double* v, double* a, double L, doub
             // Elastic walls.
             if (r[j * MAXPART + i] < 0. || r[j * MAXPART + i] >= L) {
                 v[j * MAXPART + i] *= -1.0; // Elastic walls.
-                cudaAtomicAdd(psum, 2 * m * fabs(v[j * MAXPART + i]) / dt);  // Contribution to pressure from "left" walls.
+                tempResult[threadIdx.x] += 2 * m * fabs(v[j * MAXPART + i]) / dt;  // Contribution to pressure from "left" walls.
             }
         }
+    }
+
+    __syncthreads();
+    for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+        if (threadIdx.x < stride) {
+            tempResult[threadIdx.x] += tempResult[threadIdx.x + stride];
+        }
+        __syncthreads();
+    }
+
+    // Store the sum in d_pot
+    if (threadIdx.x == 0) {
+        psum[blockIdx.x] = tempResult[0];
     }
 }
 
@@ -544,25 +558,18 @@ double VelocityVerletAndPotential(double dt, double *potentialEnergy) {
     *potentialEnergy = computeAccelerationsAndPotentialVector();
 
 
-    double psum = 0.;
-    cudaMemset(d_result,0,sizeof(double));
+    cudaMalloc(&d_reduction,sizeof(double)*blocksPerGrid.x);
+    double result[blocksPerGrid.x];
 
-    // Update velocity with updated acceleration.
-    for (int j = 0; j < 3; j++) {
-        for (int i = 0; i < N; i++) {
-            v[j][i] += 0.5 * a[j][i] * dt;
-            if (r[j][i] < 0.|| r[j][i] >= L) {
-                v[j][i] *= -1.; // Elastic walls.
-                psum += 2 * m * fabs(v[j][i]) / dt;  // Contribution to pressure from "left" walls.
-            }
-        }
-    }
+    updateVelocities<<<blocksPerGrid, threadsPerBlock,threadsPerBlock.x*sizeof(double)>>>(d_r, d_v, d_a,L,dt,m, N, d_reduction);
 
-    updateVelocities<<<blocksPerGrid, threadsPerBlock>>>(d_r, d_v, d_a,L,dt,m, N, d_result);
+    cudaMemcpy(result, d_reduction, sizeof(double), cudaMemcpyDeviceToHost);
 
-    cudaMemcpy(&psum, d_result, sizeof(double), cudaMemcpyDeviceToHost);
+    cudaFree(d_reduction);
+    for (int i=1;i<blocksPerGrid.x;i++)
+        result[0]+=result[i];
  
-    return psum / (6 * L * L);
+    return result[0] / (6 * L * L);
 }
 
 
