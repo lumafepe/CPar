@@ -30,7 +30,7 @@ double L, // Size of the box, which will be specified in natural units.
 double r[3][MAXPART], // Position array.
        v[3][MAXPART], // Velocity array.
        a[3][MAXPART]; // Acceleration array.
-double *d_r,*d_v,*d_a,*d_result,*d_reduction;
+double *d_r,*d_v,*d_a,*d_reduction;
 
 const char* fileHeaders[] = {
     "  time (s)              T(t) (K)              P(t) (Pa)           Kinetic En. (n.u.)     Potential En. (n.u.) Total En. (n.u.)\n",
@@ -54,7 +54,6 @@ int main()
     cudaMalloc(&d_a,sizeof(double)*MAXPART*3);
     cudaMalloc(&d_r,sizeof(double)*MAXPART*3);
     cudaMalloc(&d_v,sizeof(double)*MAXPART*3);
-    cudaMalloc(&d_result,sizeof(double));
 
     double Pavg = 0.,
            Tavg = 0.;
@@ -166,7 +165,6 @@ int main()
     cudaFree(d_r);
     cudaFree(d_a);
     cudaFree(d_v);
-    cudaFree(d_result);
 
     return 0;
 }
@@ -246,7 +244,7 @@ __global__ void calculateSquareVelocity(double* v, int N, double* result) {
  */
 double MeanSquaredVelocity() {
 
-    dim3 threadsPerBlock(256);
+    dim3 threadsPerBlock(128);
     dim3 blocksPerGrid((N + threadsPerBlock.x - 1) / threadsPerBlock.x);
 
     cudaMalloc(&d_reduction,sizeof(double)*blocksPerGrid.x);
@@ -297,7 +295,7 @@ __global__ void calculateKinetic(double* v, int N, double m, double* result) {
  * @return The total kinetic energy of the system.
  */
 double Kinetic() { //Write Function here!
-    dim3 threadsPerBlock(256);
+    dim3 threadsPerBlock(128);
     dim3 blocksPerGrid((N + threadsPerBlock.x - 1) / threadsPerBlock.x);
 
     cudaMalloc(&d_reduction,sizeof(double)*blocksPerGrid.x);
@@ -305,7 +303,7 @@ double Kinetic() { //Write Function here!
 
     calculateKinetic<<<blocksPerGrid, threadsPerBlock,threadsPerBlock.x*sizeof(double)>>>(d_v, N, m, d_reduction);
 
-    cudaMemcpy(result, d_reduction, sizeof(double), cudaMemcpyDeviceToHost);
+    cudaMemcpy(result, d_reduction, sizeof(double)*blocksPerGrid.x, cudaMemcpyDeviceToHost);
 
     cudaFree(d_reduction);
     for (int i=1;i<blocksPerGrid.x;i++)
@@ -548,7 +546,7 @@ double VelocityVerletAndPotential(double dt, double *potentialEnergy) {
     Update positions and velocity with current velocity and acceleration.
     */
 
-    dim3 threadsPerBlock(256);
+    dim3 threadsPerBlock(128);
     dim3 blocksPerGrid((N + threadsPerBlock.x - 1) / threadsPerBlock.x);
 
     updateMotion<<<blocksPerGrid, threadsPerBlock>>>(d_r, d_v, d_a, N, dt);
@@ -563,7 +561,7 @@ double VelocityVerletAndPotential(double dt, double *potentialEnergy) {
 
     updateVelocities<<<blocksPerGrid, threadsPerBlock,threadsPerBlock.x*sizeof(double)>>>(d_r, d_v, d_a,L,dt,m, N, d_reduction);
 
-    cudaMemcpy(result, d_reduction, sizeof(double), cudaMemcpyDeviceToHost);
+    cudaMemcpy(result, d_reduction, sizeof(double)*blocksPerGrid.x, cudaMemcpyDeviceToHost);
 
     cudaFree(d_reduction);
     for (int i=1;i<blocksPerGrid.x;i++)
