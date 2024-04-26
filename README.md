@@ -1,1 +1,1 @@
-Parallel computing Project
+Parallel Computing Project
